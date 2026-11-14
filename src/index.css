@@ -1,0 +1,329 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,450;14..32,500;14..32,600&display=swap');
+
+/* ══════════════════════════════════════════════════════════════════
+   Tailwind v4 Design Tokens  (replaces tailwind.config.js theme)
+══════════════════════════════════════════════════════════════════ */
+@theme {
+  /* ── Colors ─────────────────────────────────────────────────── */
+  --color-bg-canvas:     #EBEBEB;
+  --color-bg-primary:    #FFFFFF;
+  --color-bg-secondary:  #F5F5F5;
+  --color-bg-tertiary:   #EEEEEE;
+
+  --color-border:        #DEDEDE;
+  --color-border-subtle: #E8E8E8;
+  --color-border-strong: #C4C4C4;
+
+  --color-text-primary:   #0D0D0D;
+  --color-text-secondary: #5A5A5A;
+  --color-text-disabled:  #A4A4A4;
+  --color-text-inverse:   #FFFFFF;
+
+  --color-accent:        #1C6BD6;
+  --color-accent-hover:  #175EBD;
+  --color-accent-muted:  #EAF1FC;
+  --color-accent-subtle: #D6E6FA;
+
+  --color-danger:        #C42B2B;
+  --color-danger-light:  #FEF2F2;
+
+  --color-success:       #1A8A40;
+  --color-success-light: #F0FDF4;
+
+  --color-warning:       #B07900;
+  --color-warning-light: #FFFBEB;
+
+  /* ── Border radius ───────────────────────────────────────────── */
+  --radius-sm: 2px;
+  --radius:    3px;
+  --radius-md: 4px;
+  --radius-lg: 6px;
+  --radius-xl: 8px;
+
+  /* ── Shadows ─────────────────────────────────────────────────── */
+  --shadow-sm:       0 1px 2px rgba(0,0,0,0.06);
+  --shadow-dropdown: 0 2px 8px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.07);
+  --shadow-panel:    0 3px 12px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.06);
+  --shadow-modal:    0 8px 32px rgba(0,0,0,0.20), 0 0 0 1px rgba(0,0,0,0.08);
+
+  /* ── Typography ──────────────────────────────────────────────── */
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+
+  --text-xs:   11px;
+  --text-xs--line-height: 16px;
+  --text-sm:   12px;
+  --text-sm--line-height: 17px;
+  --text-ui:   13px;
+  --text-ui--line-height: 19px;
+  --text-base: 13.5px;
+  --text-base--line-height: 20px;
+  --text-lg:   15px;
+  --text-lg--line-height: 22px;
+  --text-xl:   17px;
+  --text-xl--line-height: 24px;
+  --text-2xl:  19px;
+  --text-2xl--line-height: 26px;
+  --text-3xl:  22px;
+  --text-3xl--line-height: 28px;
+
+  /* ── Animations ──────────────────────────────────────────────── */
+  --animate-fade-in:        fadeIn 100ms ease-out;
+  --animate-slide-in-right: slideInRight 120ms ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideInRight {
+  from { transform: translateX(8px); opacity: 0; }
+  to   { transform: translateX(0);   opacity: 1; }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Base overrides
+══════════════════════════════════════════════════════════════════ */
+@layer base {
+  *, *::before, *::after {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-size: 15px;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    margin: 0;
+    padding: 0;
+    background: #FFFFFF;
+    color: #0D0D0D;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 100vh;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-weight: 600;
+    letter-spacing: -0.018em;
+    line-height: 1.2;
+  }
+
+  button {
+    cursor: pointer;
+    font-family: inherit;
+  }
+
+  input, textarea, select {
+    font-family: inherit;
+    font-size: inherit;
+  }
+
+  ::selection {
+    background: #D6E6FA;
+    color: #0D0D0D;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Components
+══════════════════════════════════════════════════════════════════ */
+@layer components {
+  /* ── Scrollbar ──────────────────────────────────────────────── */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #D0D0D0 transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 3px;
+    height: 3px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background: #CCCCCC;
+    border-radius: 2px;
+  }
+
+  .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+    background: #AAAAAA;
+  }
+
+  /* ── React Flow ─────────────────────────────────────────────── */
+  .react-flow__node {
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+  .react-flow__edge-path {
+    stroke: #C8C8C8;
+    stroke-width: 1.5;
+  }
+
+  .react-flow__edge.selected .react-flow__edge-path {
+    stroke: #1C6BD6;
+    stroke-width: 1.5;
+  }
+
+  .react-flow__handle {
+    width: 6px;
+    height: 6px;
+    background: #DEDEDE;
+    border: 1px solid #C4C4C4;
+    border-radius: 50%;
+    opacity: 0;
+    transition: opacity 0.1s, background 0.1s;
+  }
+
+  .react-flow__node:hover .react-flow__handle,
+  .react-flow__handle:hover {
+    opacity: 1;
+    background: #1C6BD6;
+    border-color: #1C6BD6;
+  }
+
+  .react-flow__controls {
+    box-shadow: 0 1px 4px rgba(0,0,0,0.10), 0 0 0 1px rgba(0,0,0,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .react-flow__controls-button {
+    background: #FFFFFF;
+    border-bottom: 1px solid #E2E2E2;
+    color: #5A5A5A;
+    width: 26px;
+    height: 26px;
+    padding: 5px;
+    transition: background 0.1s;
+  }
+
+  .react-flow__controls-button:last-child {
+    border-bottom: none;
+  }
+
+  .react-flow__controls-button:hover {
+    background: #F5F5F5;
+    color: #0D0D0D;
+  }
+
+  .react-flow__controls-button svg {
+    max-width: 11px;
+    max-height: 11px;
+  }
+
+  .react-flow__minimap {
+    border: 1px solid #DEDEDE;
+    border-radius: 3px;
+    overflow: hidden;
+    box-shadow: none;
+  }
+
+  .react-flow__background {
+    background: #F2F2F2;
+  }
+
+  .react-flow__background pattern circle {
+    fill: #C8C8C8;
+  }
+
+  /* ── Tiptap ─────────────────────────────────────────────────── */
+  .tiptap-editor .ProseMirror {
+    outline: none;
+    min-height: 160px;
+    font-size: 13px;
+    line-height: 1.65;
+    color: #0D0D0D;
+    caret-color: #1C6BD6;
+  }
+
+  .tiptap-editor .ProseMirror > * + * {
+    margin-top: 0.45em;
+  }
+
+  .tiptap-editor .ProseMirror p {
+    margin: 0;
+    line-height: 1.65;
+  }
+
+  .tiptap-editor .ProseMirror h1 {
+    font-size: 1.35em;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    margin: 1.4em 0 0.45em;
+    color: #0D0D0D;
+  }
+
+  .tiptap-editor .ProseMirror h1:first-child { margin-top: 0; }
+
+  .tiptap-editor .ProseMirror h2 {
+    font-size: 1.05em;
+    font-weight: 600;
+    margin: 1.1em 0 0.35em;
+    color: #0D0D0D;
+  }
+
+  .tiptap-editor .ProseMirror h3 {
+    font-size: 0.9em;
+    font-weight: 600;
+    margin: 0.9em 0 0.25em;
+    color: #0D0D0D;
+  }
+
+  .tiptap-editor .ProseMirror ul,
+  .tiptap-editor .ProseMirror ol {
+    margin: 0.3em 0;
+    padding-left: 1.35em;
+  }
+
+  .tiptap-editor .ProseMirror li { margin: 0.1em 0; }
+
+  .tiptap-editor .ProseMirror strong {
+    font-weight: 600;
+    color: #0D0D0D;
+  }
+
+  .tiptap-editor .ProseMirror em {
+    font-style: italic;
+    color: #404040;
+  }
+
+  .tiptap-editor .ProseMirror a {
+    color: #1C6BD6;
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 2px;
+  }
+
+  .tiptap-editor .ProseMirror hr {
+    border: none;
+    border-top: 1px solid #E2E2E2;
+    margin: 1.1em 0;
+  }
+
+  .tiptap-editor .ProseMirror p.is-editor-empty:first-child::before {
+    content: attr(data-placeholder);
+    color: #B8B8B8;
+    pointer-events: none;
+    float: left;
+    height: 0;
+  }
+
+  /* ── Focus ring ─────────────────────────────────────────────── */
+  .focus-ring {
+    outline: none;
+  }
+
+  .focus-ring:focus-visible {
+    outline: 1.5px solid #1C6BD6;
+    outline-offset: 1px;
+  }
+}

@@ -1,0 +1,318 @@
+import type { StateStorage } from 'zustand/middleware';
+import { useEffect, useState } from 'react';
+
+export interface StorageStatus {
+  status: 'synced' | 'saving' | 'error' | 'idle';
+  lastSaved: Date | null;
+  filePath: string;
+  fileSize: number;
+  error?: string;
+  isWebMode?: boolean;
+}
+
+let currentStatus: StorageStatus = {
+  status: 'idle',
+  lastSaved: null,
+  filePath: 'data/learnmap_data.json',
+  fileSize: 0,
+  isWebMode: false,
+};
+
+let lastSavedString: string | null = null;
+let isSyncPaused = false;
+let backendAvailable: boolean | null = null;
+
+export function setSyncPaused(paused: boolean): void {
+  isSyncPaused = paused;
+}
+
+const listeners = new Set<(status: StorageStatus) => void>();
+
+function notify(updates: Partial<StorageStatus>) {
+  currentStatus = { ...currentStatus, ...updates };
+  listeners.forEach((listener) => {
+    try {
+      listener(currentStatus);
+    } catch {
+      // ignore listener error
+    }
+  });
+}
+
+export function getStorageStatus(): StorageStatus {
+  return currentStatus;
+}
+
+export function subscribeStorageStatus(listener: (status: StorageStatus) => void): () => void {
+  listeners.add(listener);
+  listener(currentStatus);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+let saveTimeout: ReturnType<typeof setTimeout> | null = null;
+let pendingDataToSave: any = null;
+
+/**
+ * Check if the Vite local backend storage endpoint is available
+ */
+export async function checkBackendAvailability(): Promise<boolean> {
+  if (backendAvailable !== null) return backendAvailable;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 2000);
+    const res = await fetch('/api/storage/info', { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const ct = res.headers.get('content-type') || '';
+      if (ct.includes('application/json')) {
+        const data = await res.json();
+        if (data && data.success) {
+          backendAvailable = true;
+          return true;
+        }
+      }
+    }
+  } catch {
+    // network or abort error -> running in static/web mode
+  }
+  backendAvailable = false;
+  notify({
+    isWebMode: true,
+    filePath: 'Browser (LocalStorage & IndexedDB)',
+    status: 'synced',
+  });
+  return false;
+}
+
+/**
+ * Fetch status/path from the Vite backend API (falls back gracefully on GitHub Pages)
+ */
+export async function fetchStorageInfo(): Promise<{
+  success: boolean;
+  path: string;
+  exists: boolean;
+  size: number;
+  lastModified: number | null;
+} | null> {
+  const hasBackend = await checkBackendAvailability();
+  if (!hasBackend) {
+    return null;
+  }
+  try {
+    const res = await fetch('/api/storage/info');
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.path) {
+      notify({
+        filePath: data.path,
+        fileSize: data.size || 0,
+        lastSaved: data.lastModified ? new Date(data.lastModified) : currentStatus.lastSaved,
+        isWebMode: false,
+      });
+    }
+    return data;
+  } catch (err: any) {
+    console.warn('fetchStorageInfo error:', err);
+    return null;
+  }
+}
+
+/**
+ * Load full state from the local disk file (if local backend is available)
+ */
+export async function loadFromDisk(): Promise<any | null> {
+  const hasBackend = await checkBackendAvailability();
+  if (!hasBackend) {
+    return null;
+  }
+  try {
+    const res = await fetch('/api/storage');
+    if (!res.ok) return null;
+    const json = await res.json();
+    if (json.success && json.data) {
+      lastSavedString = JSON.stringify(json.data);
+      notify({
+        status: 'synced',
+        filePath: json.path || currentStatus.filePath,
+        fileSize: json.size || 0,
+        lastSaved: json.lastModified ? new Date(json.lastModified) : new Date(),
+        isWebMode: false,
+      });
+      return json.data;
+    }
+    return null;
+  } catch (err: any) {
+    console.warn('loadFromDisk error:', err);
+    notify({ status: 'error', error: err.message });
+    return null;
+  }
+}
+
+/**
+ * Save state payload to disk file via POST /api/storage (or sync web mode)
+ */
+export async function saveToDisk(payload: any): Promise<boolean> {
+  if (isSyncPaused) return true;
+
+  const hasBackend = await checkBackendAvailability();
+  const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+
+  if (!hasBackend) {
+    lastSavedString = bodyStr;
+    notify({
+      status: 'synced',
+      lastSaved: new Date(),
+      filePath: 'Browser (LocalStorage & IndexedDB)',
+      fileSize: bodyStr.length,
+      isWebMode: true,
+      error: undefined,
+    });
+    return true;
+  }
+
+  try {
+    // If payload is identical to what's already saved, skip disk write completely!
+    if (lastSavedString !== null && bodyStr === lastSavedString) {
+      notify({ status: 'synced' });
+      return true;
+    }
+
+    notify({ status: 'saving' });
+    const res = await fetch('/api/storage', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: bodyStr,
+    });
+
+    if (!res.ok) {
+      throw new Error(`Server returned HTTP ${res.status}`);
+    }
+
+    const resJson = await res.json();
+    lastSavedString = bodyStr;
+    notify({
+      status: 'synced',
+      lastSaved: new Date(),
+      filePath: resJson.path || currentStatus.filePath,
+      fileSize: resJson.size || bodyStr.length,
+      error: undefined,
+    });
+    return true;
+  } catch (err: any) {
+    console.error('saveToDisk failed:', err);
+    notify({
+      status: 'error',
+      error: err.message || 'Speichern auf Festplatte fehlgeschlagen',
+    });
+    return false;
+  }
+}
+
+/**
+ * Debounced disk saving to avoid thrashing disk I/O on every typing stroke
+ */
+export function debouncedSaveToDisk(payload: any, delayMs = 600): void {
+  if (isSyncPaused) return;
+
+  const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  if (lastSavedString !== null && bodyStr === lastSavedString) {
+    return;
+  }
+
+  pendingDataToSave = payload;
+  notify({ status: 'saving' });
+
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+  }
+
+  saveTimeout = setTimeout(async () => {
+    saveTimeout = null;
+    if (pendingDataToSave !== null) {
+      const toSave = pendingDataToSave;
+      pendingDataToSave = null;
+      await saveToDisk(toSave);
+    }
+  }, delayMs);
+}
+
+// Flush pending save before tab closes or reloads
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    if (pendingDataToSave !== null && !isSyncPaused && backendAvailable === true) {
+      try {
+        const bodyStr =
+          typeof pendingDataToSave === 'string'
+            ? pendingDataToSave
+            : JSON.stringify(pendingDataToSave);
+        if (bodyStr !== lastSavedString) {
+          fetch('/api/storage', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: bodyStr,
+            keepalive: true,
+          });
+        }
+      } catch {
+        // ignore unload error
+      }
+    }
+  });
+}
+
+/**
+ * React hook to observe storage sync status
+ */
+export function useStorageStatus(): StorageStatus {
+  const [status, setStatus] = useState<StorageStatus>(getStorageStatus());
+
+  useEffect(() => {
+    fetchStorageInfo();
+    const unsub = subscribeStorageStatus(setStatus);
+    return unsub;
+  }, []);
+
+  return status;
+}
+
+/**
+ * Custom StateStorage adapter combining instant localStorage cache with disk file sync
+ */
+export const diskAndLocalStorage: StateStorage = {
+  getItem: (name: string): string | null => {
+    try {
+      return localStorage.getItem(name);
+    } catch {
+      return null;
+    }
+  },
+
+  setItem: (name: string, value: string): void => {
+    try {
+      localStorage.setItem(name, value);
+    } catch (e) {
+      console.warn('localStorage setItem failed:', e);
+    }
+
+    if (isSyncPaused) return;
+
+    try {
+      const parsed = JSON.parse(value);
+      debouncedSaveToDisk(parsed);
+    } catch {
+      debouncedSaveToDisk(value);
+    }
+  },
+
+  removeItem: (name: string): void => {
+    try {
+      localStorage.removeItem(name);
+    } catch {
+      // ignore
+    }
+  },
+};
