@@ -2,7 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Eye, EyeOff, Check, Download, Upload, Clipboard, HardDrive, RefreshCw, Copy } from 'lucide-react';
 import { useImportStore, type AIProvider } from '../import/importStore';
 import { Button } from '../../components/Button';
-import { useStorageStatus, saveToDisk, loadFromDisk } from '../../services/storageSync';
+import { useStorageStatus, saveToDisk, loadFromDisk, loadFromBrowserStorage } from '../../services/storageSync';
 import { useStore, importFullState } from '../../store';
 
 const PROVIDER_LABELS: Record<AIProvider, string> = {
@@ -269,16 +269,16 @@ export const SettingsPage: React.FC = () => {
         {/* Data Section */}
         <div>
           <h2 className="text-[13px] font-semibold text-text-primary mb-1">
-            {storage.isWebMode ? 'Lokale Datenspeicherung (Local-First)' : 'Dauerhafte lokale Festplatten-Speicherung'}
+            {storage.isWebMode ? 'Dauerhafte lokale Speicherung auf deinem PC (Local-First)' : 'Dauerhafte lokale Festplatten-Speicherung'}
           </h2>
           <p className="text-[12px] text-text-secondary mb-4">
             {storage.isWebMode ? (
               <>
-                Alle deine Mindmaps, Projekte, Verbindungen, Notizen und Karteikarten werden <strong>vollständig lokal auf deinem Computer</strong> in deinem Browser gespeichert (LocalStorage &amp; IndexedDB). Deine Daten sind 100% privat und werden <strong>niemals an GitHub oder einen Server übertragen</strong>.
+                Alle deine Mindmaps, Zeitstrahlen, Notizen, Karteikarten, Aufgaben und Dateianhänge werden <strong>vollständig dauerhaft auf deinem Computer</strong> in deiner Browser-Datenbank gespeichert (IndexedDB &amp; LocalStorage). Auch beim <strong>Neuladen der Website (F5), Tab-Schließen oder Browser-Neustart</strong> bleibt alles erhalten. Deine Daten sind 100% privat und werden <strong>niemals an GitHub oder externe Server übertragen</strong>.
               </>
             ) : (
               <>
-                Alle deine Mindmaps, Projekte, Verbindungen, Notizen und Karteikarten werden automatisch dauerhaft in einer
+                Alle deine Mindmaps, Zeitstrahlen, Projekte, Notizen und Karteikarten werden automatisch dauerhaft in einer
                 echten Datei auf deiner lokalen Festplatte gespeichert. Dadurch gehen Daten bei Portwechseln (z.&nbsp;B. Port 5173 &rarr; 5174)
                 oder beim Leeren des Browser-Caches <strong>nie verloren</strong>.
               </>
@@ -291,7 +291,7 @@ export const SettingsPage: React.FC = () => {
               <div className="flex items-center gap-2">
                 <HardDrive size={15} className="text-text-primary" />
                 <span className="text-[12.5px] font-medium text-text-primary">
-                  {storage.isWebMode ? 'Speicher-Status:' : 'Dateisystem-Status:'}
+                  {storage.isWebMode ? 'Browser-Speicherstatus:' : 'Dateisystem-Status:'}
                 </span>
               </div>
               <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -299,7 +299,7 @@ export const SettingsPage: React.FC = () => {
                 {storage.status === 'saving'
                   ? 'Wird gespeichert...'
                   : storage.isWebMode
-                  ? 'Lokal im Browser gesichert'
+                  ? 'Dauerhaft auf PC gesichert'
                   : 'Lokal auf Festplatte gesichert'}
               </span>
             </div>
@@ -323,6 +323,15 @@ export const SettingsPage: React.FC = () => {
                 </div>
               </div>
 
+              {storage.isWebMode && (
+                <div className="flex items-center justify-between text-emerald-700">
+                  <span className="text-text-disabled">Löschschutz:</span>
+                  <span className="text-[11px] font-medium">
+                    {storage.isPersisted ? '✓ Persistent Storage aktiv (vor Bereinigung geschützt)' : '✓ Auf Festplatte im Browserprofil gespeichert'}
+                  </span>
+                </div>
+              )}
+
               {storage.lastSaved && (
                 <div className="flex items-center justify-between">
                   <span className="text-text-disabled">Zuletzt gespeichert:</span>
@@ -339,7 +348,37 @@ export const SettingsPage: React.FC = () => {
               </div>
             )}
 
-            {!storage.isWebMode && (
+            {storage.isWebMode ? (
+              <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={handleManualDiskSave}
+                  className="flex items-center gap-1.5 text-[11.5px]"
+                >
+                  <HardDrive size={12} /> Jetzt in IndexedDB sichern
+                </Button>
+
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={async () => {
+                    const data = await loadFromBrowserStorage();
+                    if (data) {
+                      importFullState(data);
+                      setDiskActionMsg('Daten erfolgreich aus IndexedDB neu geladen!');
+                      setTimeout(() => setDiskActionMsg(null), 3000);
+                    } else {
+                      setDiskActionMsg('Kein gespeicherter Zustand in IndexedDB gefunden.');
+                      setTimeout(() => setDiskActionMsg(null), 3000);
+                    }
+                  }}
+                  className="flex items-center gap-1.5 text-[11.5px]"
+                >
+                  <RefreshCw size={12} /> Aus IndexedDB neu laden
+                </Button>
+              </div>
+            ) : (
               <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-border">
                 <Button
                   variant="secondary"

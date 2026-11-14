@@ -1,5 +1,6 @@
 import type { StateStorage } from 'zustand/middleware';
 import { useEffect, useState } from 'react';
+import { get as idbGet, set as idbSet } from 'idb-keyval';
 
 export interface StorageStatus {
   status: 'synced' | 'saving' | 'error' | 'idle';
@@ -8,6 +9,7 @@ export interface StorageStatus {
   fileSize: number;
   error?: string;
   isWebMode?: boolean;
+  isPersisted?: boolean;
 }
 
 let currentStatus: StorageStatus = {
@@ -16,6 +18,7 @@ let currentStatus: StorageStatus = {
   filePath: 'data/learnmap_data.json',
   fileSize: 0,
   isWebMode: false,
+  isPersisted: false,
 };
 
 let lastSavedString: string | null = null;
@@ -55,6 +58,28 @@ let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingDataToSave: any = null;
 
 /**
+ * Request persistent storage from the browser so that data is guaranteed
+ * to remain on the user's PC across browser reloads, cache cleans, and restarts.
+ */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator !== 'undefined' && navigator.storage && navigator.storage.persist) {
+    try {
+      const isAlreadyPersisted = await navigator.storage.persisted();
+      if (!isAlreadyPersisted) {
+        const granted = await navigator.storage.persist();
+        notify({ isPersisted: granted });
+        return granted;
+      }
+      notify({ isPersisted: true });
+      return true;
+    } catch (err) {
+      console.warn('Could not request persistent storage:', err);
+    }
+  }
+  return false;
+}
+
+/**
  * Check if the Vite local backend storage endpoint is available
  */
 export async function checkBackendAvailability(): Promise<boolean> {
@@ -80,10 +105,83 @@ export async function checkBackendAvailability(): Promise<boolean> {
   backendAvailable = false;
   notify({
     isWebMode: true,
-    filePath: 'Browser (LocalStorage & IndexedDB)',
+    filePath: 'Browser PC-Speicher (IndexedDB & LocalStorage)',
     status: 'synced',
   });
   return false;
+}
+
+/**
+ * Save data reliably in browser storage (IndexedDB + LocalStorage backup).
+ * IndexedDB has virtually unlimited capacity on the local hard drive,
+ * ensuring large notes, images, mindmaps, and timelines are never lost on reload.
+ */
+export async function saveToBrowserStorage(payload: any): Promise<boolean> {
+  if (isSyncPaused) return true;
+  const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+  const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
+
+  try {
+    // 1. Save directly into IndexedDB (virtually unlimited capacity, persistent on local PC)
+    await idbSet('learnmap-storage-state', parsed);
+    await idbSet('learnmap-storage-raw', bodyStr);
+    await idbSet('learnmap-storage-timestamp', Date.now());
+
+    // 2. Also keep localStorage updated for fast immediate cache (if within 5MB quota)
+    try {
+      localStorage.setItem('learnmap-storage', bodyStr);
+    } catch (lsErr) {
+      console.warn('localStorage quota reached, IndexedDB safely persisted the full data:', lsErr);
+    }
+
+    lastSavedString = bodyStr;
+    notify({
+      status: 'synced',
+      lastSaved: new Date(),
+      filePath: 'Browser PC-Speicher (Dauerhaft in IndexedDB & LocalStorage)',
+      fileSize: bodyStr.length,
+      isWebMode: true,
+      error: undefined,
+    });
+    return true;
+  } catch (err: any) {
+    console.error('Failed to save to IndexedDB:', err);
+    notify({
+      status: 'error',
+      error: 'Fehler beim Speichern im Browser-Speicher: ' + (err?.message || ''),
+    });
+    return false;
+  }
+}
+
+/**
+ * Load complete state from browser storage (IndexedDB primary, LocalStorage fallback)
+ */
+export async function loadFromBrowserStorage(): Promise<any | null> {
+  try {
+    const idbState = await idbGet<any>('learnmap-storage-state');
+    if (idbState && (idbState.state || idbState.projects)) {
+      return idbState;
+    }
+    const rawStr = await idbGet<string>('learnmap-storage-raw');
+    if (rawStr) {
+      return JSON.parse(rawStr);
+    }
+  } catch (err) {
+    console.warn('loadFromBrowserStorage IndexedDB error:', err);
+  }
+
+  // Fallback to localStorage
+  try {
+    const ls = localStorage.getItem('learnmap-storage');
+    if (ls) {
+      return JSON.parse(ls);
+    }
+  } catch (err) {
+    console.warn('loadFromBrowserStorage localStorage error:', err);
+  }
+
+  return null;
 }
 
 /**
@@ -98,6 +196,8 @@ export async function fetchStorageInfo(): Promise<{
 } | null> {
   const hasBackend = await checkBackendAvailability();
   if (!hasBackend) {
+    // Request persistence in browser mode
+    requestPersistentStorage();
     return null;
   }
   try {
@@ -151,7 +251,7 @@ export async function loadFromDisk(): Promise<any | null> {
 }
 
 /**
- * Save state payload to disk file via POST /api/storage (or sync web mode)
+ * Save state payload to disk file via POST /api/storage (or sync browser IndexedDB in web mode)
  */
 export async function saveToDisk(payload: any): Promise<boolean> {
   if (isSyncPaused) return true;
@@ -160,16 +260,7 @@ export async function saveToDisk(payload: any): Promise<boolean> {
   const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
 
   if (!hasBackend) {
-    lastSavedString = bodyStr;
-    notify({
-      status: 'synced',
-      lastSaved: new Date(),
-      filePath: 'Browser (LocalStorage & IndexedDB)',
-      fileSize: bodyStr.length,
-      isWebMode: true,
-      error: undefined,
-    });
-    return true;
+    return await saveToBrowserStorage(payload);
   }
 
   try {
@@ -213,7 +304,7 @@ export async function saveToDisk(payload: any): Promise<boolean> {
 }
 
 /**
- * Debounced disk saving to avoid thrashing disk I/O on every typing stroke
+ * Debounced disk/IndexedDB saving to avoid thrashing I/O on every typing stroke
  */
 export function debouncedSaveToDisk(payload: any, delayMs = 600): void {
   if (isSyncPaused) return;
@@ -243,19 +334,28 @@ export function debouncedSaveToDisk(payload: any, delayMs = 600): void {
 // Flush pending save before tab closes or reloads
 if (typeof window !== 'undefined') {
   window.addEventListener('beforeunload', () => {
-    if (pendingDataToSave !== null && !isSyncPaused && backendAvailable === true) {
+    if (pendingDataToSave !== null && !isSyncPaused) {
       try {
         const bodyStr =
           typeof pendingDataToSave === 'string'
             ? pendingDataToSave
             : JSON.stringify(pendingDataToSave);
         if (bodyStr !== lastSavedString) {
-          fetch('/api/storage', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: bodyStr,
-            keepalive: true,
-          });
+          if (backendAvailable === true) {
+            fetch('/api/storage', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: bodyStr,
+              keepalive: true,
+            });
+          } else {
+            // Save to localStorage immediately on unload
+            try {
+              localStorage.setItem('learnmap-storage', bodyStr);
+            } catch {
+              // ignore quota
+            }
+          }
         }
       } catch {
         // ignore unload error
@@ -272,6 +372,7 @@ export function useStorageStatus(): StorageStatus {
 
   useEffect(() => {
     fetchStorageInfo();
+    requestPersistentStorage();
     const unsub = subscribeStorageStatus(setStatus);
     return unsub;
   }, []);
@@ -280,7 +381,7 @@ export function useStorageStatus(): StorageStatus {
 }
 
 /**
- * Custom StateStorage adapter combining instant localStorage cache with disk file sync
+ * Custom StateStorage adapter combining instant localStorage cache with disk file sync & IndexedDB
  */
 export const diskAndLocalStorage: StateStorage = {
   getItem: (name: string): string | null => {
@@ -295,7 +396,7 @@ export const diskAndLocalStorage: StateStorage = {
     try {
       localStorage.setItem(name, value);
     } catch (e) {
-      console.warn('localStorage setItem failed:', e);
+      console.warn('localStorage setItem failed (IndexedDB will persist data):', e);
     }
 
     if (isSyncPaused) return;

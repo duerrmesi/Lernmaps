@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useStore, useTimelinesByProject } from '../../store';
 import { formatDate } from '../../utils';
-import { Milestone, Plus, ChevronRight } from 'lucide-react';
+import { Milestone, Plus, ChevronRight, Sparkles } from 'lucide-react';
 import { EmptyState } from '../../components/EmptyState';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
 import { Input } from '../../components/Input';
+import { AITimelineModal } from './AITimelineModal';
 
 export const TimelinesPage: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
@@ -17,6 +18,7 @@ export const TimelinesPage: React.FC = () => {
   const projectTimelines = useTimelinesByProject(projectId || '');
 
   const [showNewModal, setShowNewModal] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDesc, setNewDesc] = useState('');
 
@@ -58,9 +60,19 @@ export const TimelinesPage: React.FC = () => {
               Erstelle visuelle Zeitsträhle für dieses Projekt.
             </p>
           </div>
-          <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
-            <Plus size={12} strokeWidth={2.5} /> Neuer Zeitstrahl
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowAIModal(true)}
+              className="flex items-center gap-1.5"
+            >
+              <Sparkles size={12} className="text-purple-600" /> Mit KI erstellen
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
+              <Plus size={12} strokeWidth={2.5} /> Neuer Zeitstrahl
+            </Button>
+          </div>
         </div>
 
         {/* List */}
@@ -70,9 +82,19 @@ export const TimelinesPage: React.FC = () => {
             title="Noch kein Zeitstrahl angelegt"
             description="Erstelle deinen ersten Zeitstrahl, um historische Abfolgen, Phasen oder Prozesse visuell zu strukturieren."
             action={
-              <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
-                <Plus size={12} /> Zeitstrahl anlegen
-              </Button>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowAIModal(true)}
+                  className="flex items-center gap-1.5"
+                >
+                  <Sparkles size={12} className="text-purple-600" /> Zeitstrahl mit KI
+                </Button>
+                <Button variant="primary" size="sm" onClick={() => setShowNewModal(true)}>
+                  <Plus size={12} /> Zeitstrahl anlegen
+                </Button>
+              </div>
             }
           />
         ) : (
@@ -153,6 +175,13 @@ export const TimelinesPage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* AI Timeline Modal */}
+      <AITimelineModal
+        isOpen={showAIModal}
+        onClose={() => setShowAIModal(false)}
+        projectId={projectId}
+      />
     </div>
   );
 };

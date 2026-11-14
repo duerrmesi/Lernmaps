@@ -43,6 +43,24 @@ export interface GeneratedTaskcard {
   sourcePage?: number;
 }
 
+export interface GeneratedTimelineEvent {
+  id: string;
+  title: string;
+  description: string;
+  date: string;
+  endDate?: string;
+  category?: string;
+  color?: string;
+  importance?: 'low' | 'medium' | 'high';
+}
+
+export interface GeneratedTimeline {
+  id: string;
+  title: string;
+  description?: string;
+  events: GeneratedTimelineEvent[];
+}
+
 export interface DocumentAnalysisResult {
   fileId: string;
   fileName: string;
@@ -75,6 +93,7 @@ export interface GenerationResult {
   notes: GeneratedNote[];
   flashcards: GeneratedFlashcard[];
   taskcards: GeneratedTaskcard[];
+  timelines: GeneratedTimeline[];
 }
 
 function parseJSONFromText(text: string): any {
@@ -287,16 +306,17 @@ ${truncatedText}
   static async generateMaterials(
     analysis: DocumentAnalysisResult, 
     selectedTopicIds: string[], 
-    options: { mindmap: boolean, notes: boolean, flashcards: boolean, taskcards: boolean },
+    options: { mindmap: boolean; notes: boolean; flashcards: boolean; taskcards: boolean; timelines?: boolean },
     provider: 'gemini' | 'openrouter' | 'ollama',
     apiKey: string,
     model: string
   ): Promise<GenerationResult> {
     const text = (window as any)._lastExtractedText || "No text available.";
+    const includeTimelines = options.timelines ?? true;
     
     const prompt = `You are an expert learning materials creator. Based on the following document (Title: "${analysis.suggestedTitle}"), generate high-quality learning materials for the selected topic IDs.
 
-CRITICAL INSTRUCTION: ALL GENERATED CONTENT (TITLES, NOTES, FLASHCARDS, QUESTIONS, EXPLANATIONS) MUST BE WRITTEN IN GERMAN (DEUTSCH) LANGUAGE. DO NOT USE ENGLISH UNLESS IT'S A TECHNICAL TERM.
+CRITICAL INSTRUCTION: ALL GENERATED CONTENT (TITLES, NOTES, FLASHCARDS, QUESTIONS, EXPLANATIONS, TIMELINES) MUST BE WRITTEN IN GERMAN (DEUTSCH) LANGUAGE. DO NOT USE ENGLISH UNLESS IT'S A TECHNICAL TERM.
 
 Selected topic IDs: ${selectedTopicIds.join(', ')}
 
@@ -315,6 +335,25 @@ CRITICAL: Return ONLY a valid JSON object with exactly this structure. No markdo
   "taskcards": [
     { "id": "tc1", "title": "DEFINITION: Term", "content": "Full definition in 2-3 sentences.", "topicId": "t1" },
     { "id": "tc2", "title": "MERKSATZ: Key rule", "content": "The complete rule or law stated precisely.", "topicId": "t1" }
+  ],
+  "timelines": [
+    {
+      "id": "tl1",
+      "title": "Titel des Zeitstrahls (z.B. Chronologie der Ereignisse)",
+      "description": "Kurzer Überblick über die zeitliche Entwicklung",
+      "events": [
+        {
+          "id": "tle1",
+          "title": "Kurzer Ereignistitel",
+          "description": "Erklärung des Ereignisses oder Meilensteins (2-4 Sätze)",
+          "date": "1789",
+          "endDate": "",
+          "category": "Wendepunkt",
+          "color": "rose",
+          "importance": "high"
+        }
+      ]
+    }
   ]
 }
 
@@ -345,6 +384,11 @@ TASKCARDS (if taskcards=${options.taskcards}):
 - "content": Detailed, self-contained text (3-6 sentences) – no "see page X", explain it fully
 - "topicId" MUST match a selected topic ID
 
+TIMELINES (if timelines=${includeTimelines}):
+- Analysiere, ob das Dokument oder die ausgewählten Themen historische, chronologische, entwicklungsgeschichtliche, prozedurale oder meilensteinbasierte Abläufe enthalten (z. B. Epochen, Entdeckungen, Werdegänge, Phasenabläufe, Projektstadien).
+- ${!includeTimelines ? 'timelines MUST be empty array []' : 'WENN ES ZEITLICH/HISTORISCH/PROZEDURAL SINN MACHT: Erstelle 1-2 Zeitstrahlen mit je 5 bis 12 präzisen, chronologisch geordneten Ereignissen. WENN ES KEINEN ZEITLICHEN SINN MACHT (z. B. reine Formeln, reine Definitionen): "timelines" MUST be empty array [].'}
+- Ereignisse müssen präzise "date" (z.B. "1789", "1848", "Phase 1: Prophase", "1914-1918"), "importance" ("low", "medium", "high"), "category" (z.B. "Politik", "Wissenschaft", "Meilenstein", "Entdeckung"), "color" ("blue", "emerald", "amber", "rose", "purple", "indigo") und beschreibenden Text haben.
+
 Document text:
 ${text.substring(0, 25000)}
 `;
@@ -355,8 +399,101 @@ ${text.substring(0, 25000)}
       mindmapNodes: result.mindmapNodes || [],
       notes: result.notes || [],
       flashcards: result.flashcards || [],
-      taskcards: result.taskcards || []
+      taskcards: result.taskcards || [],
+      timelines: Array.isArray(result.timelines) ? result.timelines : [],
     };
+  }
+
+  static async generateTimeline(
+    topicOrText: string,
+    options: { count?: number; focus?: string } = {},
+    provider: 'gemini' | 'openrouter' | 'ollama',
+    apiKey: string,
+    model: string
+  ): Promise<GeneratedTimeline> {
+    const eventCount = options.count || 8;
+    const focus = options.focus || 'wichtigste Meilensteine, Wendepunkte und Entwicklungsphasen';
+
+    const prompt = `Du bist ein Fachexperte und Pädagoge. Erstelle einen strukturierten, chronologisch geordneten und lehrreichen Zeitstrahl zum folgenden Thema bzw. Text.
+
+Thema / Kontext:
+${topicOrText}
+
+Fokus: ${focus}
+Anzahl der Ereignisse: ca. ${eventCount} Ereignisse
+
+CRITICAL INSTRUCTION: ALL TITLES, DATES, CATEGORIES AND DESCRIPTIONS MUST BE WRITTEN IN GERMAN (DEUTSCH).
+Sort the events strictly in chronological order!
+
+Return ONLY a valid JSON object matching this structure:
+{
+  "id": "tl_ai",
+  "title": "Prägnanter Titel des Zeitstrahls",
+  "description": "1-3 Sätze Zusammenfassung des geschichtlichen/zeitlichen Ablaufs",
+  "events": [
+    {
+      "id": "tle_1",
+      "title": "Titel des Ereignisses (prägnant, 2-6 Wörter)",
+      "description": "Präzise Erklärung was passiert ist, Hintergründe, Bedeutung oder Folgen (2-4 Sätze in deutscher Sprache)",
+      "date": "Datum oder Epoche (z.B. '1789', '14.07.1789', '1914 - 1918', '44 v. Chr.', 'Phase 1: Beginn')",
+      "endDate": "",
+      "category": "Kategorie (z.B. Politik, Wissenschaft, Entdeckung, Meilenstein, Kultur, Krise, Wende)",
+      "color": "eine der Farben: 'blue', 'emerald', 'amber', 'rose', 'purple', 'indigo'",
+      "importance": "'high', 'medium' oder 'low'"
+    }
+  ]
+}
+`;
+
+    const result = await this.callAI(prompt, provider, apiKey, model);
+    return {
+      id: result.id || 'tl_' + Date.now(),
+      title: result.title || 'Zeitstrahl: ' + topicOrText.substring(0, 40),
+      description: result.description || '',
+      events: Array.isArray(result.events) ? result.events : [],
+    };
+  }
+
+  static async generateTimelineEvents(
+    timelineTitle: string,
+    existingEvents: { title: string; date: string }[],
+    options: { count?: number; focus?: string } = {},
+    provider: 'gemini' | 'openrouter' | 'ollama',
+    apiKey: string,
+    model: string
+  ): Promise<GeneratedTimelineEvent[]> {
+    const eventCount = options.count || 5;
+    const focus = options.focus || 'weitere relevante Ereignisse und Meilensteine, die noch fehlen';
+
+    const prompt = `Du bist ein Fachexperte. Ergänze einen bestehenden Zeitstrahl mit dem Titel "${timelineTitle}" um ca. ${eventCount} zusätzliche, bedeutsame Ereignisse.
+
+Bereits vorhandene Ereignisse auf dem Zeitstrahl:
+${existingEvents.map(e => `- [${e.date}] ${e.title}`).join('\n')}
+
+Fokus für neue Ereignisse: ${focus}
+WICHTIG: Die neuen Ereignisse dürfen die bereits vorhandenen NICHT doppeln!
+
+CRITICAL INSTRUCTION: ALL TITLES, DATES, CATEGORIES AND DESCRIPTIONS MUST BE WRITTEN IN GERMAN (DEUTSCH).
+
+Return ONLY a valid JSON object matching this structure:
+{
+  "events": [
+    {
+      "id": "tle_new_1",
+      "title": "Titel des neuen Ereignisses",
+      "description": "Erklärung des Ereignisses und seiner Bedeutung (2-3 Sätze)",
+      "date": "Datum oder Epoche (z.B. '1804', '18.10.1813', 'Phase 2')",
+      "endDate": "",
+      "category": "Kategorie (z.B. Politik, Wissenschaft, Entdeckung, Meilenstein)",
+      "color": "eine der Farben: 'blue', 'emerald', 'amber', 'rose', 'purple', 'indigo'",
+      "importance": "'high', 'medium' oder 'low'"
+    }
+  ]
+}
+`;
+
+    const result = await this.callAI(prompt, provider, apiKey, model);
+    return Array.isArray(result.events) ? result.events : [];
   }
 
   static async generateExamQuestions(

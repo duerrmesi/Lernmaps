@@ -13,6 +13,7 @@ import {
   Rows,
   Columns,
   GraduationCap,
+  Sparkles,
 } from 'lucide-react';
 import { useStore, useTimeline, useTimelineEventsByTimeline } from '../../store';
 import { Button } from '../../components/Button';
@@ -24,6 +25,7 @@ import { TimelineVerticalView } from './TimelineVerticalView';
 import { TimelineTableView } from './TimelineTableView';
 import { TimelineQuizView } from './TimelineQuizView';
 import { sortTimelineEvents } from './timelineUtils';
+import { AITimelineModal } from './AITimelineModal';
 import type { TimelineEvent } from '../../types';
 
 type ViewMode = 'horizontal' | 'vertical' | 'table' | 'quiz';
@@ -54,6 +56,7 @@ export const TimelinePage: React.FC = () => {
 
   // Modals
   const [showEventModal, setShowEventModal] = useState(false);
+  const [showAIModal, setShowAIModal] = useState(false);
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
   const [showEditTimeline, setShowEditTimeline] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -190,6 +193,15 @@ export const TimelinePage: React.FC = () => {
 
           {/* Right Action buttons */}
           <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => setShowAIModal(true)}
+              className="flex items-center gap-1.5"
+              title="Mit KI weitere Meilensteine und Ereignisse generieren"
+            >
+              <Sparkles size={12} className="text-purple-600" /> KI-Ereignisse ergänzen
+            </Button>
             <Button
               variant="secondary"
               size="sm"
@@ -477,6 +489,15 @@ export const TimelinePage: React.FC = () => {
           </div>
         </div>
       </Modal>
+
+      {/* AI Timeline Modal for adding events */}
+      <AITimelineModal
+        isOpen={showAIModal}
+        onClose={() => setShowAIModal(false)}
+        projectId={projectId}
+        targetTimelineId={timeline.id}
+        targetTimelineTitle={timeline.title}
+      />
     </div>
   );
 };

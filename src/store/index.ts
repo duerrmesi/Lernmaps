@@ -1,7 +1,16 @@
 import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import { diskAndLocalStorage, saveToDisk, loadFromDisk, setSyncPaused } from '../services/storageSync';
+import {
+  diskAndLocalStorage,
+  saveToDisk,
+  loadFromDisk,
+  setSyncPaused,
+  requestPersistentStorage,
+  checkBackendAvailability,
+  loadFromBrowserStorage,
+  saveToBrowserStorage,
+} from '../services/storageSync';
 import type {
   AppState,
   Project,
@@ -1429,45 +1438,79 @@ export function importFullState(payload: any, persistToDisk = true): boolean {
 }
 
 /**
- * Synchronize store with local disk file on startup
+ * Synchronize store with local disk file (in desktop mode) or
+ * persistent browser storage (IndexedDB in GitHub/web mode) on startup.
  */
 export async function initStorage(): Promise<void> {
   try {
-    const diskData = await loadFromDisk();
+    // Request persistent browser storage so data on the user's PC is never purged by the browser
+    await requestPersistentStorage();
+
+    const hasBackend = await checkBackendAvailability();
     const currentState = useStore.getState();
     const storeProjectCount = Object.keys(currentState.projects || {}).length;
 
-    if (diskData) {
-      const diskState = diskData.state || diskData;
-      const diskProjects = diskState.projects || {};
-      const diskProjectCount = Object.keys(diskProjects).length;
-
-      // If store is empty but disk has data (e.g. port changed or cache cleared): load from disk
-      if (storeProjectCount === 0 && diskProjectCount > 0) {
-        importFullState(diskData, false);
-        return;
+    const getLatestUpdate = (projectsObj: Record<string, { updatedAt?: string }>) => {
+      let max = '';
+      for (const p of Object.values(projectsObj || {})) {
+        if (p.updatedAt && p.updatedAt > max) max = p.updatedAt;
       }
+      return max;
+    };
 
-      // If both have projects, check newest updated timestamp
-      const getLatestUpdate = (projectsObj: Record<string, { updatedAt?: string }>) => {
-        let max = '';
-        for (const p of Object.values(projectsObj)) {
-          if (p.updatedAt && p.updatedAt > max) max = p.updatedAt;
+    if (hasBackend) {
+      const diskData = await loadFromDisk();
+      if (diskData) {
+        const diskState = diskData.state || diskData;
+        const diskProjects = diskState.projects || {};
+        const diskProjectCount = Object.keys(diskProjects).length;
+
+        // If store is empty but disk has data: load from disk
+        if (storeProjectCount === 0 && diskProjectCount > 0) {
+          importFullState(diskData, false);
+          return;
         }
-        return max;
-      };
 
-      const storeLatest = getLatestUpdate(currentState.projects);
-      const diskLatest = getLatestUpdate(diskProjects);
+        const storeLatest = getLatestUpdate(currentState.projects);
+        const diskLatest = getLatestUpdate(diskProjects);
 
-      if (diskLatest > storeLatest) {
-        importFullState(diskData, false);
-      } else if (storeProjectCount > 0 && storeLatest > diskLatest) {
+        if (diskLatest > storeLatest) {
+          importFullState(diskData, false);
+        } else if (storeProjectCount > 0 && storeLatest > diskLatest) {
+          saveToDisk({ state: currentState, version: 0 });
+        }
+      } else if (storeProjectCount > 0) {
+        // Disk file didn't exist yet, but store has data: persist to disk right now!
         saveToDisk({ state: currentState, version: 0 });
       }
-    } else if (storeProjectCount > 0) {
-      // Disk file didn't exist yet, but store has data: persist to disk right now!
-      saveToDisk({ state: currentState, version: 0 });
+    } else {
+      // ─── BROWSER / GITHUB PAGES MODE ──────────────────────────────────
+      // Load from IndexedDB (safe against localStorage 5MB quota and browser restarts)
+      const browserData = await loadFromBrowserStorage();
+      if (browserData) {
+        const browserState = browserData.state || browserData;
+        const browserProjects = browserState.projects || {};
+        const browserProjectCount = Object.keys(browserProjects).length;
+
+        // If store is empty in memory but IndexedDB has data, restore from IndexedDB
+        if (storeProjectCount === 0 && browserProjectCount > 0) {
+          importFullState(browserData, false);
+          return;
+        }
+
+        const storeLatest = getLatestUpdate(currentState.projects);
+        const browserLatest = getLatestUpdate(browserProjects);
+
+        if (browserLatest > storeLatest) {
+          importFullState(browserData, false);
+        } else {
+          // Persist memory state to ensure IndexedDB is fully synchronized
+          await saveToBrowserStorage({ state: currentState, version: 0 });
+        }
+      } else if (storeProjectCount > 0) {
+        // Store has data in memory, persist to IndexedDB immediately
+        await saveToBrowserStorage({ state: currentState, version: 0 });
+      }
     }
   } catch (err) {
     console.warn('initStorage failed:', err);

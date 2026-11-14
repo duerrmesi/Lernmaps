@@ -13,7 +13,24 @@ type Step = 'upload' | 'analyzing' | 'topics' | 'options' | 'generating' | 'revi
 export const ImportModal: React.FC = () => {
   const { isOpen, close } = useImportStore();
   const navigate = useNavigate();
-  const { projects, createProject, createMindmap, createNode, createEdge, updateNode, createNote, updateNote, createFlashcard, createTaskcard, linkNoteToNode, createKnowledgeNode, createQuestion, createExam } = useStore();
+  const {
+    projects,
+    createProject,
+    createMindmap,
+    createNode,
+    createEdge,
+    updateNode,
+    createNote,
+    updateNote,
+    createFlashcard,
+    createTaskcard,
+    linkNoteToNode,
+    createKnowledgeNode,
+    createQuestion,
+    createExam,
+    createTimeline,
+    createTimelineEvent,
+  } = useStore();
 
   const [step, setStep] = useState<Step>('upload');
   const [uploadType, setUploadType] = useState<'file' | 'text' | 'image' | 'exam'>('file');
@@ -25,7 +42,13 @@ export const ImportModal: React.FC = () => {
   const [selectedTopicIds, setSelectedTopicIds] = useState<Set<string>>(new Set());
 
   // Options
-  const [options, setOptions] = useState({ mindmap: true, notes: true, flashcards: true, taskcards: false });
+  const [options, setOptions] = useState({
+    mindmap: true,
+    notes: true,
+    flashcards: true,
+    taskcards: false,
+    timelines: true,
+  });
 
   // Generated results
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
@@ -46,7 +69,13 @@ export const ImportModal: React.FC = () => {
     setAnalysis(null);
     setExamAnalysis(null);
     setSelectedTopicIds(new Set());
-    setOptions({ mindmap: true, notes: true, flashcards: true, taskcards: false });
+    setOptions({
+      mindmap: true,
+      notes: true,
+      flashcards: true,
+      taskcards: false,
+      timelines: true,
+    });
     setGenerationResult(null);
     setRejectedItems(new Set());
     setTargetProjectId('new');
@@ -293,6 +322,27 @@ export const ImportModal: React.FC = () => {
       });
     }
 
+    if (options.timelines && generationResult.timelines) {
+      generationResult.timelines.forEach(tl => {
+        if (rejectedItems.has(tl.id)) return;
+        const newTl = createTimeline(projId, tl.title, tl.description || '');
+        if (Array.isArray(tl.events)) {
+          tl.events.forEach(ev => {
+            if (rejectedItems.has(ev.id)) return;
+            createTimelineEvent(newTl.id, projId, {
+              title: ev.title,
+              description: ev.description,
+              date: ev.date,
+              endDate: ev.endDate,
+              category: ev.category,
+              color: ev.color,
+              importance: ev.importance,
+            });
+          });
+        }
+      });
+    }
+
     handleClose();
     navigate('/projects/' + projId);
   };
@@ -396,9 +446,22 @@ export const ImportModal: React.FC = () => {
                 <p className="text-[12px] text-text-secondary">Erstelle eine uebersichtliche Lernflaeche.</p>
               </label>
 
+              <label className={cn("border rounded-lg p-4 cursor-pointer transition-colors col-span-2", options.timelines ? 'border-blue-500 bg-blue-500/5' : 'border-border hover:border-text-disabled')}>
+                <div className="flex justify-between items-start mb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-[14px] text-text-primary">Zeitstrahl (Chronologie & Meilensteine)</span>
+                    <span className="text-[10px] bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded font-medium">KI-Kontext-Erkennung</span>
+                  </div>
+                  <input type="checkbox" checked={options.timelines} onChange={e => setOptions({...options, timelines: e.target.checked})} className="rounded text-blue-500" />
+                </div>
+                <p className="text-[12px] text-text-secondary">
+                  Wird automatisch erstellt, wenn das Thema historische Ereignisse, Entwicklungsstufen, Epochen oder schrittweise Abläufe enthält.
+                </p>
+              </label>
+
             </div>
             <div className="flex justify-end">
-              <Button onClick={handleOptionsSubmit} disabled={!options.mindmap && !options.notes && !options.flashcards && !options.taskcards}>Lernmaterial erstellen</Button>
+              <Button onClick={handleOptionsSubmit} disabled={!options.mindmap && !options.notes && !options.flashcards && !options.taskcards && !options.timelines}>Lernmaterial erstellen</Button>
             </div>
           </div>
         )}
@@ -412,6 +475,7 @@ export const ImportModal: React.FC = () => {
                {options.notes && <p className="flex items-center gap-2">... Notizen</p>}
                {options.flashcards && <p className="flex items-center gap-2">... Karteikarten</p>}
                {options.taskcards && <p className="flex items-center gap-2">... Taskcards</p>}
+               {options.timelines && <p className="flex items-center gap-2">... Zeitstrahl & Meilensteine (falls Thema zeitlich relevant)</p>}
             </div>
           </div>
         )}
@@ -476,6 +540,47 @@ export const ImportModal: React.FC = () => {
                       <label key={n.id} className="flex items-center gap-2 text-[12px] text-text-secondary">
                         <input type="checkbox" checked={!rejectedItems.has(n.id)} onChange={() => toggleReject(n.id)} className="rounded" />
                         {n.title}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {options.timelines && generationResult.timelines && generationResult.timelines.length > 0 && (
+                <div>
+                  <h4 className="text-[13px] font-semibold text-text-primary mb-2 flex justify-between">
+                    <span>Zeitstrahlen & Chronologie</span>
+                    <span className="text-text-disabled font-normal">
+                      {generationResult.timelines.length} {generationResult.timelines.length === 1 ? 'Zeitstrahl' : 'Zeitstrahlen'}
+                    </span>
+                  </h4>
+                  <div className="space-y-2">
+                    {generationResult.timelines.map((tl) => (
+                      <label key={tl.id} className="flex items-start gap-2.5 text-[12px] text-text-secondary bg-bg-tertiary p-2.5 rounded border border-border/80">
+                        <input
+                          type="checkbox"
+                          checked={!rejectedItems.has(tl.id)}
+                          onChange={() => toggleReject(tl.id)}
+                          className="rounded mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-semibold text-text-primary">{tl.title}</p>
+                          {tl.description && (
+                            <p className="text-text-disabled text-[11px] mt-0.5 line-clamp-1">{tl.description}</p>
+                          )}
+                          <div className="mt-1.5 flex flex-wrap gap-1.5">
+                            {tl.events?.slice(0, 4).map((ev) => (
+                              <span key={ev.id} className="text-[10px] bg-white border border-border px-1.5 py-0.5 rounded text-text-secondary">
+                                <span className="font-medium text-text-primary">{ev.date}:</span> {ev.title}
+                              </span>
+                            ))}
+                            {(tl.events?.length || 0) > 4 && (
+                              <span className="text-[10px] text-text-disabled self-center">
+                                +{(tl.events?.length || 0) - 4} weitere
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </label>
                     ))}
                   </div>
