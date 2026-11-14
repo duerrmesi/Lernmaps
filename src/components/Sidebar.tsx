@@ -143,7 +143,13 @@ export const Sidebar: React.FC = () => {
         <NavLink
           to="/settings"
           className="flex items-center justify-between px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
-          title={storage.isWebMode ? 'Lokal im Browser gesichert (LocalStorage & IndexedDB)' : `Festplatte: ${storage.filePath}`}
+          title={
+            storage.status === 'error' && storage.error
+              ? `Speicherfehler: ${storage.error}`
+              : storage.isWebMode
+              ? 'Lokal im Browser gesichert (IndexedDB & LocalStorage)'
+              : `Festplatte: ${storage.filePath}`
+          }
         >
           <div className="flex items-center gap-1.5 min-w-0">
             <HardDrive size={11} className="shrink-0 text-text-disabled" />

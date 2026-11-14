@@ -56,6 +56,7 @@ export function subscribeStorageStatus(listener: (status: StorageStatus) => void
 
 let saveTimeout: ReturnType<typeof setTimeout> | null = null;
 let pendingDataToSave: any = null;
+let backendAvailabilityPromise: Promise<boolean> | null = null;
 
 /**
  * Request persistent storage from the browser so that data is guaranteed
@@ -84,31 +85,38 @@ export async function requestPersistentStorage(): Promise<boolean> {
  */
 export async function checkBackendAvailability(): Promise<boolean> {
   if (backendAvailable !== null) return backendAvailable;
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 2000);
-    const res = await fetch('/api/storage/info', { signal: controller.signal });
-    clearTimeout(timeoutId);
-    if (res.ok) {
-      const ct = res.headers.get('content-type') || '';
-      if (ct.includes('application/json')) {
-        const data = await res.json();
-        if (data && data.success) {
-          backendAvailable = true;
-          return true;
+  if (backendAvailabilityPromise) return backendAvailabilityPromise;
+
+  backendAvailabilityPromise = (async () => {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1500);
+      const res = await fetch('/api/storage/info', { signal: controller.signal });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        if (ct.includes('application/json')) {
+          const data = await res.json();
+          if (data && data.success) {
+            backendAvailable = true;
+            return true;
+          }
         }
       }
+    } catch {
+      // network or abort error -> running in static/web mode
     }
-  } catch {
-    // network or abort error -> running in static/web mode
-  }
-  backendAvailable = false;
-  notify({
-    isWebMode: true,
-    filePath: 'Browser PC-Speicher (IndexedDB & LocalStorage)',
-    status: 'synced',
-  });
-  return false;
+    backendAvailable = false;
+    notify({
+      isWebMode: true,
+      filePath: 'Browser PC-Speicher (IndexedDB & LocalStorage)',
+      status: 'synced',
+      error: undefined,
+    });
+    return false;
+  })();
+
+  return backendAvailabilityPromise;
 }
 
 /**
@@ -118,20 +126,40 @@ export async function checkBackendAvailability(): Promise<boolean> {
  */
 export async function saveToBrowserStorage(payload: any): Promise<boolean> {
   if (isSyncPaused) return true;
-  const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
-  const parsed = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   try {
+    // Crucial: ALWAYS JSON serialize first to strip any non-cloneable objects like functions/symbols
+    const bodyStr = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    let cleanObject: any;
+    try {
+      cleanObject = JSON.parse(bodyStr);
+    } catch {
+      cleanObject = bodyStr;
+    }
+
+    let idbSuccess = false;
+    let lsSuccess = false;
+
     // 1. Save directly into IndexedDB (virtually unlimited capacity, persistent on local PC)
-    await idbSet('learnmap-storage-state', parsed);
-    await idbSet('learnmap-storage-raw', bodyStr);
-    await idbSet('learnmap-storage-timestamp', Date.now());
+    try {
+      await idbSet('learnmap-storage-state', cleanObject);
+      await idbSet('learnmap-storage-raw', bodyStr);
+      await idbSet('learnmap-storage-timestamp', Date.now());
+      idbSuccess = true;
+    } catch (idbErr) {
+      console.warn('IndexedDB write warning:', idbErr);
+    }
 
     // 2. Also keep localStorage updated for fast immediate cache (if within 5MB quota)
     try {
       localStorage.setItem('learnmap-storage', bodyStr);
+      lsSuccess = true;
     } catch (lsErr) {
       console.warn('localStorage quota reached, IndexedDB safely persisted the full data:', lsErr);
+    }
+
+    if (!idbSuccess && !lsSuccess) {
+      throw new Error('Speichern im Browser fehlgeschlagen (IndexedDB & LocalStorage blockiert).');
     }
 
     lastSavedString = bodyStr;
@@ -145,10 +173,10 @@ export async function saveToBrowserStorage(payload: any): Promise<boolean> {
     });
     return true;
   } catch (err: any) {
-    console.error('Failed to save to IndexedDB:', err);
+    console.error('saveToBrowserStorage failed:', err);
     notify({
       status: 'error',
-      error: 'Fehler beim Speichern im Browser-Speicher: ' + (err?.message || ''),
+      error: err?.message || 'Fehler beim Speichern im Browser-Speicher',
     });
     return false;
   }
@@ -245,7 +273,9 @@ export async function loadFromDisk(): Promise<any | null> {
     return null;
   } catch (err: any) {
     console.warn('loadFromDisk error:', err);
-    notify({ status: 'error', error: err.message });
+    if (backendAvailable === true) {
+      notify({ status: 'error', error: err.message });
+    }
     return null;
   }
 }
@@ -294,10 +324,14 @@ export async function saveToDisk(payload: any): Promise<boolean> {
     });
     return true;
   } catch (err: any) {
-    console.error('saveToDisk failed:', err);
+    console.error('saveToDisk failed, falling back to browser storage:', err);
+    const browserSaved = await saveToBrowserStorage(payload);
+    if (browserSaved) {
+      return true;
+    }
     notify({
       status: 'error',
-      error: err.message || 'Speichern auf Festplatte fehlgeschlagen',
+      error: err.message || 'Speichern fehlgeschlagen',
     });
     return false;
   }

@@ -1392,6 +1392,31 @@ export const useStore = create<StoreState>()(
 );
 
 /**
+ * Returns clean serializable data from the Zustand store, completely free of any functions
+ */
+export function getSerializableState(): AppState {
+  const s = useStore.getState();
+  return {
+    projects: s.projects || {},
+    mindmaps: s.mindmaps || {},
+    mindmapNodes: s.mindmapNodes || {},
+    mindmapEdges: s.mindmapEdges || {},
+    notes: s.notes || {},
+    flashcards: s.flashcards || {},
+    taskcards: s.taskcards || {},
+    drawings: s.drawings || {},
+    knowledgeNodes: s.knowledgeNodes || {},
+    learningEvents: s.learningEvents || {},
+    questions: s.questions || {},
+    mistakes: s.mistakes || {},
+    exams: s.exams || {},
+    examResults: s.examResults || {},
+    timelines: s.timelines || {},
+    timelineEvents: s.timelineEvents || {},
+  };
+}
+
+/**
  * Safely imports and applies an entire state payload into the Zustand store
  * and persists it to both localStorage and local file on disk
  */
@@ -1427,8 +1452,7 @@ export function importFullState(payload: any, persistToDisk = true): boolean {
     }
 
     if (persistToDisk) {
-      const fullState = useStore.getState();
-      saveToDisk({ state: fullState, version: 0 });
+      saveToDisk({ state: getSerializableState(), version: 0 });
     }
     return true;
   } catch (err) {
@@ -1477,11 +1501,11 @@ export async function initStorage(): Promise<void> {
         if (diskLatest > storeLatest) {
           importFullState(diskData, false);
         } else if (storeProjectCount > 0 && storeLatest > diskLatest) {
-          saveToDisk({ state: currentState, version: 0 });
+          saveToDisk({ state: getSerializableState(), version: 0 });
         }
       } else if (storeProjectCount > 0) {
         // Disk file didn't exist yet, but store has data: persist to disk right now!
-        saveToDisk({ state: currentState, version: 0 });
+        saveToDisk({ state: getSerializableState(), version: 0 });
       }
     } else {
       // ─── BROWSER / GITHUB PAGES MODE ──────────────────────────────────
@@ -1505,11 +1529,11 @@ export async function initStorage(): Promise<void> {
           importFullState(browserData, false);
         } else {
           // Persist memory state to ensure IndexedDB is fully synchronized
-          await saveToBrowserStorage({ state: currentState, version: 0 });
+          await saveToBrowserStorage({ state: getSerializableState(), version: 0 });
         }
       } else if (storeProjectCount > 0) {
         // Store has data in memory, persist to IndexedDB immediately
-        await saveToBrowserStorage({ state: currentState, version: 0 });
+        await saveToBrowserStorage({ state: getSerializableState(), version: 0 });
       }
     }
   } catch (err) {

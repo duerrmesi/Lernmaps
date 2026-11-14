@@ -3,7 +3,7 @@ import { Eye, EyeOff, Check, Download, Upload, Clipboard, HardDrive, RefreshCw, 
 import { useImportStore, type AIProvider } from '../import/importStore';
 import { Button } from '../../components/Button';
 import { useStorageStatus, saveToDisk, loadFromDisk, loadFromBrowserStorage } from '../../services/storageSync';
-import { useStore, importFullState } from '../../store';
+import { importFullState, getSerializableState } from '../../store';
 
 const PROVIDER_LABELS: Record<AIProvider, string> = {
   gemini: 'Google Gemini',
@@ -39,7 +39,7 @@ export const SettingsPage: React.FC = () => {
   const [diskActionMsg, setDiskActionMsg] = useState<string | null>(null);
 
   const handleManualDiskSave = async () => {
-    const state = useStore.getState();
+    const state = getSerializableState();
     const ok = await saveToDisk({ state, version: 0 });
     if (ok) {
       setDiskActionMsg('Erfolgreich auf Festplatte gespeichert!');
