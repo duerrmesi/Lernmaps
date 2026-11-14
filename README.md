@@ -1,130 +1,104 @@
 # 🧠 LearnMap
 
-> **Eine moderne, interaktive Lern- und Wissensmanagement-Plattform.**  
-> Mindmaps, Karteikarten mit Spaced Repetition, Notizen, Taskcards, Zeitleisten und Prüfungssimulationen – alles in einer flüssigen, reaktiven Oberfläche.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![React](https://img.shields.io/badge/React-19-61dafb.svg)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6.svg)](https://www.typescriptlang.org/)
+[![Vite](https://img.shields.io/badge/Vite-6-646cff.svg)](https://vitejs.dev/)
+[![Tailwind CSS](https://img.shields.io/badge/Tailwind-4-38bdf8.svg)](https://tailwindcss.com/)
+[![Local--First](https://img.shields.io/badge/Privacy-100%25%20Local--First-emerald.svg)](#-datenschutz--local-first-architektur)
+
+> **Die all-in-one Lern- und Wissensmanagement-Plattform.**  
+> Kombiniere interaktive Mindmaps, Spaced-Repetition-Karteikarten, Notizen, Taskcards, Zeitleisten und KI-Unterstützung in einer intuitiven, hochperformanten Web-App.
+
+🌐 **Live-Web-App:** [https://duerrmesi.github.io/Lernmaps/](https://duerrmesi.github.io/Lernmaps/)
 
 ---
 
-## 🔒 100% Datenschutz & Local-First Architektur
+## 🔒 Datenschutz & Local-First Architektur
 
-Obwohl diese Website öffentlich über **GitHub Pages** bereitgestellt werden kann, bleiben die Daten der Benutzer **zu 100% lokal und privat auf deren eigenem Rechner**:
+LearnMap wurde von Grund auf nach dem **Local-First-Prinzip** entwickelt. Obwohl die Anwendung öffentlich über das Web (z. B. auf GitHub Pages) erreichbar ist, bleiben deine Daten zu 100 % privat auf deinem Computer:
 
-- **Keine Cloud-Datenbank & kein Server-Speicher:** Alle erstellten Projekte, Mindmaps, Karteikarten, Notizen und Anhänge werden ausschließlich in der lokalen Browser-Sandbox des Nutzers gespeichert (`LocalStorage` für Texte und Strukturen, `IndexedDB` für Bilder und Dateianhänge).
-- **Vollständige Datentrennung:** Jeder Besucher, der deine GitHub-Pages-URL öffnet, arbeitet in seiner eigenen, isolierten lokalen Datenbank. Niemand sieht die Daten eines anderen Nutzers.
-- **Kein Tracking, keine Cookies:** Weder GitHub noch Dritte erhalten Einblick in deine Lerninhalte.
-- **Offline-Fähig:** Einmal im Browser geladen, funktioniert LearnMap auch komplett ohne Internetverbindung.
-- **Sichere Backups:** Über das Einstellungsmenü (`Einstellungen` ➔ `Daten & Speicher`) kann der gesamte Datenbestand jederzeit mit einem Klick als JSON-Datei exportiert und auf jedem beliebigen Rechner wieder importiert werden.
-
----
-
-## ✨ Features im Überblick
-
-- 🗺️ **Interaktive Mindmaps:** Visuelle Wissensnetze mit hierarchischem Auto-Layout (Dagre & Radial), Markdown-Notizen und Dateianhängen.
-- 🗂️ **Spaced Repetition Karteikarten:** Wissenschaftlich fundiertes Lernen (SM-2 Algorithmus) mit Selbsteinschätzung und Tagesabfragen.
-- 📝 **Rich-Text Notizen:** Leistungsstarker Editor für Zusammenfassungen, Formeln und Skripte.
-- 📋 **Kanban Taskcards:** Aufgabenmanagement mit Farbkennzeichnung und Priorisierung.
-- ⏳ **Interaktive Zeitleisten:** Chronologische Ereignisse und Geschichtsabläufe visualisieren.
-- 🎯 **Prüfungsplan & Fehleranalyse:** Prüfungstermine verwalten, Fehler kategorisieren und Wissenslücken gezielt schließen.
-- 🤖 **Optionale KI-Unterstützung:** Dokumentenanalyse und automatische Kartengenerierung via Gemini, OpenRouter oder lokalem Ollama (API-Key bleibt nur im Browser gespeichert).
+- **Keine Serverdatenbank:** Es gibt keinen zentralen Server, der deine Notizen oder Lerninhalte speichert.
+- **Speicherung im Browser:** Alle Projekte, Mindmaps, Karteikarten und Einstellungen liegen in der gesicherten Sandbox deines lokalen Browsers (`LocalStorage`). Bilder und Dateianhänge werden direkt in deiner lokalen `IndexedDB` abgelegt.
+- **Volle Offline-Fähigkeit:** Einmal im Browser geladen, funktioniert LearnMap auch komplett ohne bestehende Internetverbindung.
+- **Einfache Backups:** Exportiere deine gesamten Lerninhalte jederzeit mit einem Klick als JSON-Datei und stelle sie auf jedem beliebigen anderen Gerät wieder her.
 
 ---
 
-## 🚀 Veröffentlichung auf GitHub Pages (Schritt-für-Schritt)
+## ✨ Funktionen im Überblick
 
-Dieses Repository ist bereits so vorkonfiguriert, dass GitHub Pages die Website vollautomatisch erstellt und hostet.
-
-### Option 1: Per Git & GitHub Actions (Empfohlen)
-
-1. **Neues GitHub-Repository erstellen:**
-   - Gehe auf [GitHub](https://github.com) und erstelle ein neues, öffentliches (oder privates) Repository, z. B. `learnmap`.
-   
-2. **Dateien hochladen:**
-   - Öffne ein Terminal in diesem Ordner und führe aus:
-     ```bash
-     git init
-     git add .
-     git commit -m "Initial commit for LearnMap GitHub Pages"
-     git branch -M main
-     git remote add origin https://github.com/<DEIN-BENUTZERNAME>/<DEIN-REPO-NAME>.git
-     git push -u origin main
-     ```
-   *(Alternativ kannst du die Dateien auch direkt über die GitHub-Website per Drag-and-Drop hochladen).*
-
-3. **GitHub Pages aktivieren:**
-   - Gehe in deinem GitHub-Repository auf **Settings** (Einstellungen).
-   - Klicke in der linken Seitenleiste auf **Pages**.
-   - Wähle unter **Build and deployment** > **Source** die Option:
-     👉 **`GitHub Actions`**
-   - GitHub führt nun den hinterlegten Workflow (`.github/workflows/deploy.yml`) automatisch aus.
-   - Nach ca. 1–2 Minuten ist deine Website live unter:  
-     `https://<DEIN-BENUTZERNAME>.github.io/<DEIN-REPO-NAME>/`
+| Modul | Beschreibung |
+| :--- | :--- |
+| 🗺️ **Interaktive Mindmaps** | Drag & Drop Wissensgraphen, hierarchisches Auto-Layout (Dagre & Radial), Markdown-Notizen und Dateianhänge direkt an Knoten. |
+| 🗂️ **Spaced Repetition** | Karteikartensystem nach dem wissenschaftlichen SM-2-Algorithmus (SuperMemo/Anki) mit automatischer Wiederholungsplanung. |
+| 📝 **Rich-Text Notizen** | Strukturierter Editor für Zusammenfassungen, Skripte, Codeblöcke und Formeln. |
+| 📋 **Taskcards** | Kanban-ähnliches Aufgabenboard mit Farbkategorien, Fälligkeitsdaten und Priorisierung. |
+| ⏳ **Interaktive Zeitleisten** | Chronologische Visualisierung von historischen Ereignissen, Prozessen und Entwicklungen. |
+| 🎯 **Prüfungsmanagement** | Prüfungssimulation, Wissensstand-Tracking und gezielte Fehleranalyse für schwache Themenbereiche. |
+| 🤖 **Smarter KI-Import** | Dokumenten- und Klausuranalyse (PDF/Text) zur automatischen Generierung von Mindmaps und Karteikarten via Gemini, OpenRouter oder lokalem Ollama. |
 
 ---
 
-### Option 2: Manuelle Bereitstellung (Über den `dist`-Ordner)
+## 🚀 Schnelleinstieg & Lokale Entwicklung
 
-Falls du GitHub Actions nicht nutzen möchtest, kannst du auch den im Ordner `dist/` bereits fertig kompilierten Web-Build verwenden:
-
-1. Lade den Inhalt des Ordners `dist` in den Branch `gh-pages` deines Repositories hoch.
-2. Wähle unter **Settings** > **Pages** > **Source** den Branch `gh-pages` und den Ordner `/ (root)`.
-3. Speichern – die Website ist sofort online!
-
----
-
-## 💻 Lokale Entwicklung & Start
-
-Du kannst LearnMap auch jederzeit lokal auf deinem Computer ausführen oder weiterentwickeln:
+Du kannst LearnMap sowohl direkt online nutzen als auch lokal auf deinem PC ausführen:
 
 ### Voraussetzungen
 - [Node.js](https://nodejs.org) (Version 18 oder neuer)
+- npm oder pnpm
 
-### Befehle
+### Installation
 
 ```bash
-# 1. Abhängigkeiten installieren
+# 1. Repository klonen
+git clone https://github.com/duerrmesi/Lernmaps.git
+cd Lernmaps
+
+# 2. Abhängigkeiten installieren
 npm install
 
-# 2. Lokalen Entwicklungsserver starten
+# 3. Lokalen Entwicklungsserver starten
 npm run dev
+```
 
-# 3. Produktions-Build erstellen
+Die Anwendung öffnet sich automatisch unter `http://localhost:5173`.
+
+### Produktions-Build erstellen
+
+```bash
 npm run build
-
-# 4. Vorschau des Builds ansehen
 npm run preview
 ```
 
 ---
 
-## 📦 Projektstruktur
+## 🛠️ Veröffentlichung auf GitHub Pages
 
-```text
-├── .github/
-│   └── workflows/
-│       └── deploy.yml        # Automatischer GitHub-Pages-Build- und Deploy-Workflow
-├── dist/                     # Fertig vorkompilierte Website (sofort einsatzbereit)
-├── public/                   # Statische Assets (Favicon, Icons)
-├── src/                      # Vollständiger TypeScript & React Quellcode
-│   ├── components/           # UI-Komponenten (Sidebar, Button, Modal etc.)
-│   ├── features/             # Funktionsmodule (Mindmaps, Flashcards, Notes, Settings etc.)
-│   ├── services/             # Speicher- und Synchronisationsdienste
-│   ├── store/                # Zustand-Store mit Local-First Persistenz
-│   └── types/                # TypeScript Typdefinitionen
-├── index.html                # Einstiegsseite
-├── package.json              # Paketdefinition & Abhängigkeiten
-├── vite.config.ts            # Vite-Konfiguration (optimiert für relative Pfade & GitHub Pages)
-└── README.md                 # Diese Dokumentation
-```
+LearnMap enthält eine vorkonfigurierte GitHub Actions Pipeline (`.github/workflows/deploy.yml`):
+
+1. Gehe in deinem GitHub-Repository auf **Settings** ➔ **Pages**.
+2. Wähle unter **Build and deployment** > **Source**:  
+   👉 **`GitHub Actions`**  
+   *(Alternativ: Wähle `Deploy from a branch` mit dem Branch `gh-pages`)*.
+3. Jeder Push auf den Branch `main` baut und aktualisiert deine Live-Website vollautomatisch.
 
 ---
 
-## 💾 Datensicherheit & Export-Tipps für Nutzer
+## 📦 Verwendete Technologien
 
-- **Automatisches Speichern:** Jede Änderung wird sofort im Browser (`LocalStorage`) und größere Daten in `IndexedDB` gespeichert.
-- **Regelmäßige Backups:** Klicke unten links auf `Einstellungen` ➔ `Jetzt als Backup herunterladen (JSON)`, um deinen Datenbestand auf deiner Festplatte als Datei abzuspeichern.
-- **Gerätewechsel:** Lade deine gespeicherte JSON-Datei auf einem beliebigen anderen PC oder Smartphone über `Backup-Datei auswählen` wieder hoch.
+- **Frontend:** [React 19](https://react.dev/), [TypeScript](https://www.typescriptlang.org/)
+- **Build Tool:** [Vite](https://vitejs.dev/)
+- **Styling:** [Tailwind CSS 4](https://tailwindcss.com/)
+- **Graph & Mindmap Engine:** [@xyflow/react](https://reactflow.dev/) (React Flow)
+- **Graph Layouting:** [@dagrejs/dagre](https://github.com/dagrejs/dagre)
+- **Editor:** [TipTap](https://tiptap.dev/)
+- **State Management:** [Zustand](https://github.com/pmndrs/zustand) mit benutzerdefinierter Persistenz
+- **Client Storage:** LocalStorage & [idb-keyval](https://github.com/jakearchibald/idb-keyval) (IndexedDB)
+- **Icons:** [Lucide React](https://lucide.dev/)
 
 ---
 
 ## 📄 Lizenz
-MIT License – Freie Verwendung für persönliche und akademische Zwecke.
+
+Dieses Projekt steht unter der [MIT Lizenz](LICENSE).  
+Frei nutzbar für private, schulische und universitäre Zwecke.
