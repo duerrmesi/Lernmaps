@@ -13,16 +13,22 @@ import {
   ChevronRight,
   Plus,
   HardDrive,
+  QrCode,
+  Cloud,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useSearchStore } from '../features/search/searchStore';
 import { useStore } from '../store';
 import { useImportStore } from '../features/import/importStore';
 import { useStorageStatus } from '../services/storageSync';
+import { useSyncModalStore } from '../features/sync/syncModalStore';
+import { useCloudSync } from '../services/firebaseAuthSync';
 
 export const Sidebar: React.FC = () => {
-  const { open: openSearch} = useSearchStore();
-  const { open: openImport} = useImportStore();
+  const { open: openSearch } = useSearchStore();
+  const { open: openImport } = useImportStore();
+  const { openTransfer, openAuth } = useSyncModalStore();
+  const { user, syncStatus } = useCloudSync();
   const navigate = useNavigate();
   const { projects, createProject } = useStore();
   const [projectsOpen, setProjectsOpen] = useState(true);
@@ -48,14 +54,25 @@ export const Sidebar: React.FC = () => {
         </span>
       </div>
 
-      {/* Import Action */}
-      <button
-        onClick={openImport}
-        className="mx-2.5 mb-2.5 flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-tertiary border border-border text-text-primary text-[11.5px] font-medium hover:bg-bg-hover transition-colors"
-      >
-        <Plus size={12} strokeWidth={2.5} />
-        <span>Lernmaterial hinzufügen</span>
-      </button>
+      {/* Action Buttons */}
+      <div className="px-2.5 mb-2.5 space-y-1.5">
+        <button
+          onClick={openImport}
+          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-tertiary border border-border text-text-primary text-[11.5px] font-medium hover:bg-bg-hover transition-colors"
+        >
+          <Plus size={12} strokeWidth={2.5} />
+          <span>Lernmaterial hinzufügen</span>
+        </button>
+
+        <button
+          onClick={() => openTransfer()}
+          className="w-full flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-canvas border border-border text-text-secondary text-[11.5px] font-medium hover:bg-bg-secondary hover:text-text-primary transition-colors"
+          title="Materialien per 6-stelligem Code oder QR-Code aufs iPad übertragen"
+        >
+          <QrCode size={12} strokeWidth={2.2} className="text-text-primary" />
+          <span>iPad-Transfer (Code)</span>
+        </button>
+      </div>
 
       {/* Search */}
       <button
@@ -75,7 +92,7 @@ export const Sidebar: React.FC = () => {
         <div className="pt-2 pb-0.5">
           <div className="flex items-center justify-between px-1.5 mb-0.5">
             <button
-              onClick={() => setProjectsOpen(o => !o)}
+              onClick={() => setProjectsOpen((o) => !o)}
               className="flex items-center gap-1 text-[10px] font-semibold tracking-widest uppercase text-text-disabled hover:text-text-secondary transition-colors"
             >
               {projectsOpen ? <ChevronDown size={9} strokeWidth={2.5} /> : <ChevronRight size={9} strokeWidth={2.5} />}
@@ -95,7 +112,7 @@ export const Sidebar: React.FC = () => {
               {projectList.length === 0 ? (
                 <p className="text-[11px] text-text-disabled px-2.5 py-1 italic">Noch kein Projekt</p>
               ) : (
-                projectList.slice(0, 8).map(p => (
+                projectList.slice(0, 8).map((p) => (
                   <NavLink
                     key={p.id}
                     to={`/projects/${p.id}`}
@@ -138,8 +155,37 @@ export const Sidebar: React.FC = () => {
         </div>
       </nav>
 
-      {/* Settings & Storage */}
+      {/* Cloud Account, Settings & Storage */}
       <div className="px-2 pb-3 border-t border-border pt-2 space-y-1">
+        {/* Cloud Account Button */}
+        <button
+          onClick={openAuth}
+          className="w-full flex items-center justify-between px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors text-left"
+          title={user ? `Angemeldet als ${user.email} (Cloud-Sync aktiv)` : 'Konto anlegen oder anmelden für automatischen Cloud-Sync'}
+        >
+          <div className="flex items-center gap-1.5 min-w-0">
+            <Cloud size={11} className={user ? 'shrink-0 text-emerald-600' : 'shrink-0 text-text-disabled'} />
+            <span className="truncate">
+              {syncStatus === 'syncing'
+                ? 'Wird synchronisiert...'
+                : user
+                ? (user.email ? user.email.split('@')[0] : 'Cloud-Sync aktiv')
+                : 'Offline / Anmelden'}
+            </span>
+          </div>
+          <span
+            className={cn(
+              'w-1.5 h-1.5 rounded-full shrink-0',
+              syncStatus === 'syncing'
+                ? 'bg-amber-400 animate-pulse'
+                : user
+                ? 'bg-emerald-500'
+                : 'bg-slate-300'
+            )}
+          />
+        </button>
+
+        {/* Local Storage Status */}
         <NavLink
           to="/settings"
           className="flex items-center justify-between px-2.5 py-1 rounded text-[11px] text-text-secondary hover:bg-bg-secondary hover:text-text-primary transition-colors"
@@ -172,6 +218,7 @@ export const Sidebar: React.FC = () => {
             )}
           />
         </NavLink>
+
         <NavItem to="/settings" icon={Settings} label="Einstellungen" />
       </div>
     </aside>

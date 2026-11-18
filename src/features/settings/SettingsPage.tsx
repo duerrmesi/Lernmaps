@@ -1,9 +1,11 @@
 import React, { useState, useRef } from 'react';
-import { Eye, EyeOff, Check, Download, Upload, Clipboard, HardDrive, RefreshCw, Copy } from 'lucide-react';
+import { Eye, EyeOff, Check, Download, Upload, Clipboard, HardDrive, RefreshCw, Copy, QrCode, Cloud, Share2 } from 'lucide-react';
 import { useImportStore, type AIProvider } from '../import/importStore';
 import { Button } from '../../components/Button';
 import { useStorageStatus, saveToDisk, loadFromDisk, loadFromBrowserStorage } from '../../services/storageSync';
 import { importFullState, getSerializableState } from '../../store';
+import { useSyncModalStore } from '../sync/syncModalStore';
+import { useCloudSync } from '../../services/firebaseAuthSync';
 
 const PROVIDER_LABELS: Record<AIProvider, string> = {
   gemini: 'Google Gemini',
@@ -31,6 +33,8 @@ const PROVIDER_KEY_PLACEHOLDER: Record<AIProvider, string> = {
 
 export const SettingsPage: React.FC = () => {
   const { provider, setProvider, apiKeys, setApiKey, models, setModel } = useImportStore();
+  const { openTransfer, openAuth } = useSyncModalStore();
+  const { user } = useCloudSync();
   const [showKey, setShowKey] = useState(false);
   const [saved, setSaved] = useState(false);
   const backupInputRef = useRef<HTMLInputElement>(null);
@@ -129,6 +133,76 @@ export const SettingsPage: React.FC = () => {
           <h1 className="text-[20px] font-semibold text-text-primary mb-1">Einstellungen</h1>
           <p className="text-[13px] text-text-secondary">Grundlegende App-Einstellungen</p>
         </div>
+
+        {/* Geräte-Synchronisation & iPad-Transfer Section */}
+        <div className="mb-8">
+          <h2 className="text-[13px] font-semibold text-text-primary mb-1">
+            Geräte-Synchronisation &amp; iPad-Transfer
+          </h2>
+          <p className="text-[12px] text-text-secondary mb-4">
+            Übertrage deine Materialien per 6-stelligem Code/QR-Code aufs iPad oder nutze den automatischen Cloud-Sync.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-2">
+            {/* Option B: Schnell-Transfer per Code */}
+            <div className="border border-border rounded-lg p-4 bg-bg-secondary flex flex-col justify-between">
+              <div>
+                <div className="flex items-center gap-2 mb-2">
+                  <QrCode size={16} className="text-text-primary" />
+                  <h3 className="text-[12.5px] font-semibold text-text-primary">
+                    Schnell-Transfer (Code &amp; QR)
+                  </h3>
+                </div>
+                <p className="text-[11.5px] text-text-secondary mb-3 leading-relaxed">
+                  Generiere am PC einen 6-stelligen Code oder QR-Code und gib ihn am iPad ein. <strong>Kein Login erforderlich!</strong>
+                </p>
+              </div>
+              <Button
+                variant="secondary"
+                onClick={() => openTransfer()}
+                className="w-full text-[12px] h-8"
+              >
+                <Share2 size={13} />
+                <span>Transfer-Fenster öffnen</span>
+              </Button>
+            </div>
+
+            {/* Option A: Firebase Cloud-Konto */}
+            <div className="border border-border rounded-lg p-4 bg-bg-secondary flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Cloud size={16} className={user ? 'text-emerald-600' : 'text-text-primary'} />
+                    <h3 className="text-[12.5px] font-semibold text-text-primary">
+                      Cloud-Konto (Firebase)
+                    </h3>
+                  </div>
+                  {user && (
+                    <span className="text-[10px] bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-medium">
+                      Aktiv
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11.5px] text-text-secondary mb-3 leading-relaxed">
+                  {user
+                    ? `Angemeldet als ${user.email}. Alle Änderungen werden automatisch im Hintergrund synchronisiert.`
+                    : 'Melde dich an, um alle Materialien automatisch zwischen PC, iPad und weiteren Geräten synchron zu halten.'}
+                </p>
+              </div>
+              <Button
+                variant={user ? 'secondary' : 'primary'}
+                onClick={openAuth}
+                className="w-full text-[12px] h-8"
+              >
+                <Cloud size={13} />
+                <span>{user ? 'Cloud-Konto verwalten' : 'Anmelden / Registrieren'}</span>
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Divider */}
+        <div className="border-t border-border my-6" />
 
         {/* KI-Integration Section */}
         <div className="mb-8">

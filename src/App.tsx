@@ -3,6 +3,10 @@ import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './features/search/SearchModal';
 import { ImportModal } from './features/import/ImportModal';
+import { DeviceTransferModal } from './features/sync/DeviceTransferModal';
+import { AuthModal } from './features/auth/AuthModal';
+import { useSyncModalStore } from './features/sync/syncModalStore';
+import { initAuthSync } from './services/firebaseAuthSync';
 import { ProjectDetail } from './features/projects/ProjectDetail';
 import { MindmapPage } from './features/mindmap/MindmapPage';
 import { AllMindmapsPage } from './features/mindmap/AllMindmapsPage';
@@ -23,6 +27,29 @@ import { initStorage } from './store';
 function App() {
   useEffect(() => {
     initStorage();
+    const cleanupAuth = initAuthSync();
+
+    // Check URL query parameters or hash for incoming transfer codes
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      let transferCode = searchParams.get('transfer') || searchParams.get('code');
+
+      if (!transferCode && window.location.hash.includes('?')) {
+        const hashQuery = window.location.hash.split('?')[1];
+        const hashParams = new URLSearchParams(hashQuery);
+        transferCode = hashParams.get('transfer') || hashParams.get('code');
+      }
+
+      if (transferCode) {
+        useSyncModalStore.getState().openTransfer(transferCode);
+      }
+    } catch (e) {
+      console.warn('Could not parse transfer URL params:', e);
+    }
+
+    return () => {
+      cleanupAuth();
+    };
   }, []);
 
   return (
@@ -62,6 +89,8 @@ function App() {
         {/* Global modals */}
         <SearchModal />
         <ImportModal />
+        <DeviceTransferModal />
+        <AuthModal />
       </div>
     </HashRouter>
   );
