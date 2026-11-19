@@ -95,6 +95,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
@@ -106,6 +107,7 @@
     font-size: 13px;
     line-height: 1.5;
     min-height: 100vh;
+    overscroll-behavior-y: none;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -117,6 +119,7 @@
   button {
     cursor: pointer;
     font-family: inherit;
+    touch-action: manipulation;
   }
 
   input, textarea, select {
@@ -127,6 +130,13 @@
   ::selection {
     background: #D6E6FA;
     color: #0D0D0D;
+  }
+
+  /* iPad and touch enhancements */
+  @media (pointer: coarse) {
+    button, a, input, select {
+      touch-action: manipulation;
+    }
   }
 }
 

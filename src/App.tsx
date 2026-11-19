@@ -1,11 +1,13 @@
 import { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { PanelLeft } from 'lucide-react';
 import { Sidebar } from './components/Sidebar';
 import { SearchModal } from './features/search/SearchModal';
 import { ImportModal } from './features/import/ImportModal';
 import { DeviceTransferModal } from './features/sync/DeviceTransferModal';
 import { AuthModal } from './features/auth/AuthModal';
 import { useSyncModalStore } from './features/sync/syncModalStore';
+import { useUIStore } from './store/uiStore';
 import { initAuthSync } from './services/firebaseAuthSync';
 import { ProjectDetail } from './features/projects/ProjectDetail';
 import { MindmapPage } from './features/mindmap/MindmapPage';
@@ -52,11 +54,23 @@ function App() {
     };
   }, []);
 
+  const { isSidebarOpen, toggleSidebar } = useUIStore();
+
   return (
     <HashRouter>
-      <div className="flex h-screen overflow-hidden bg-bg-canvas">
+      <div className="flex h-screen overflow-hidden bg-bg-canvas relative">
         <Sidebar />
-        <main className="flex-1 flex overflow-hidden">
+        <main className="flex-1 flex overflow-hidden relative">
+          {!isSidebarOpen && (
+            <button
+              onClick={toggleSidebar}
+              className="fixed top-2.5 left-2.5 z-30 flex items-center gap-1.5 px-2.5 py-1.5 rounded bg-white/95 backdrop-blur-xs border border-border shadow-sm text-text-secondary hover:text-text-primary hover:bg-white transition-all text-xs font-medium cursor-pointer"
+              title="Seitenleiste öffnen"
+            >
+              <PanelLeft size={14} />
+              <span className="text-[11px] font-medium hidden sm:inline">Menü</span>
+            </button>
+          )}
           <Routes>
             {/* Root & Projects */}
             <Route path="/" element={<Navigate to="/projects" replace />} />

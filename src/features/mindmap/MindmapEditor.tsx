@@ -904,7 +904,7 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
         )}
 
         {/* Toolbar */}
-        <div className="absolute top-4 right-4 z-[100] flex items-center gap-1.5">
+        <div className="absolute top-3 right-3 sm:top-4 sm:right-4 z-[100] flex items-center gap-1.5 flex-wrap justify-end max-w-[calc(100%-1.5rem)]">
           {/* Drawing mode toggle */}
           <div className="flex items-center rounded border border-border bg-white overflow-hidden shadow-sm">
             <button

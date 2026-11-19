@@ -122,6 +122,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
 
   const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawingMode) return;
+    e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
     isDrawingRef.current = true;
     const cfg = TOOL_CONFIG[tool];
@@ -180,6 +181,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
           top: 0,
           left: 0,
           zIndex: 10,
+          touchAction: isDrawingMode ? 'none' : 'auto',
         }}
         className={cn(
           isDrawingMode ? 'pointer-events-auto' : 'pointer-events-none',
@@ -195,20 +197,20 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
       {isDrawingMode && (
         <div
           style={{ position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)', zIndex: 20 }}
-          className="flex items-center gap-1 bg-white border border-border rounded-xl shadow-modal px-3 py-2 select-none"
+          className="flex items-center gap-1.5 bg-white border border-border rounded-xl shadow-modal px-3.5 py-2 select-none"
         >
           {/* Tool buttons */}
           <ToolBtn active={tool === 'pen'} onClick={() => setTool('pen')} title="Stift">
-            <Pen size={14} />
+            <Pen size={15} />
           </ToolBtn>
           <ToolBtn active={tool === 'highlighter'} onClick={() => setTool('highlighter')} title="Marker">
-            <Highlighter size={14} />
+            <Highlighter size={15} />
           </ToolBtn>
           <ToolBtn active={tool === 'eraser'} onClick={() => setTool('eraser')} title="Radierer">
-            <Eraser size={14} />
+            <Eraser size={15} />
           </ToolBtn>
 
-          <div className="w-px h-5 bg-border mx-1" />
+          <div className="w-px h-6 bg-border mx-1" />
 
           {/* Colour swatches */}
           {tool !== 'eraser' && colors.map((c) => (
@@ -217,7 +219,7 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
               title={c.label}
               onClick={() => setColor(c.value)}
               className={cn(
-                'w-4 h-4 rounded-full transition-transform hover:scale-110',
+                'w-5 h-5 rounded-full transition-transform hover:scale-110 active:scale-95 cursor-pointer',
                 color === c.value ? 'ring-2 ring-offset-1 ring-text-primary scale-110' : ''
               )}
               style={{
@@ -227,24 +229,24 @@ export const DrawingOverlay: React.FC<DrawingOverlayProps> = ({
             />
           ))}
 
-          <div className="w-px h-5 bg-border mx-1" />
+          <div className="w-px h-6 bg-border mx-1" />
 
           {/* Undo / Clear */}
           <button
             onClick={handleUndo}
             disabled={strokes.length === 0}
             title="Rückgängig"
-            className="p-1 rounded hover:bg-bg-secondary text-text-secondary disabled:opacity-30 transition-colors"
+            className="p-2 min-w-[34px] min-h-[34px] flex items-center justify-center rounded hover:bg-bg-secondary text-text-secondary disabled:opacity-30 transition-colors cursor-pointer"
           >
-            <Undo2 size={14} />
+            <Undo2 size={15} />
           </button>
           <button
             onClick={handleClear}
             disabled={strokes.length === 0}
             title="Alles löschen"
-            className="p-1 rounded hover:bg-danger-light text-danger disabled:opacity-30 transition-colors"
+            className="p-2 min-w-[34px] min-h-[34px] flex items-center justify-center rounded hover:bg-danger-light text-danger disabled:opacity-30 transition-colors cursor-pointer"
           >
-            <Trash2 size={14} />
+            <Trash2 size={15} />
           </button>
         </div>
       )}
@@ -263,7 +265,7 @@ const ToolBtn: React.FC<{
     title={title}
     onClick={onClick}
     className={cn(
-      'p-1.5 rounded-lg transition-colors',
+      'p-2 min-w-[34px] min-h-[34px] flex items-center justify-center rounded-lg transition-colors cursor-pointer',
       active
         ? 'bg-text-primary text-white'
         : 'text-text-secondary hover:bg-bg-secondary'

@@ -144,14 +144,15 @@ export const AllProjectsPage: React.FC = () => {
 
                   {/* Actions */}
                   <div
-                    className="relative opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="relative opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
                       onClick={() => setMenuOpen(menuOpen === project.id ? null : project.id)}
-                      className="p-1.5 rounded hover:bg-bg-tertiary text-text-disabled hover:text-text-primary transition-colors"
+                      className="p-2 rounded hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+                      title="Optionen"
                     >
-                      <MoreHorizontal size={14} />
+                      <MoreHorizontal size={16} />
                     </button>
 
                     {menuOpen === project.id && (

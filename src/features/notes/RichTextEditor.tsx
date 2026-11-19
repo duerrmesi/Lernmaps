@@ -51,13 +51,21 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const setLink = useCallback(() => {
     if (!editor) return;
     const previousUrl = editor.getAttributes('link').href;
-    const url = window.prompt('URL eingeben:', previousUrl);
-    if (url === null) return;
+    const rawUrl = window.prompt('URL eingeben:', previousUrl);
+    if (rawUrl === null) return;
+    const url = rawUrl.trim();
     if (url === '') {
       editor.chain().focus().extendMarkRange('link').unsetLink().run();
-    } else {
-      editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
+      return;
     }
+
+    // Sicherheitsprüfung: Blockiere unsichere Protokolle (z.B. javascript:, vbscript:, data:)
+    if (/^(javascript|vbscript|data):/i.test(url)) {
+      alert('Ungültige oder unsichere URL. Nur Web-Adressen (http/https) sind erlaubt.');
+      return;
+    }
+
+    editor.chain().focus().extendMarkRange('link').setLink({ href: url }).run();
   }, [editor]);
 
   if (!editor) return null;
@@ -154,10 +162,11 @@ interface ToolbarButtonProps {
 
 const ToolbarButton: React.FC<ToolbarButtonProps> = ({ active, onClick, title, children }) => (
   <button
+    type="button"
     onClick={onClick}
     title={title}
     className={cn(
-      'p-1.5 rounded transition-colors',
+      'p-2 min-w-[32px] min-h-[32px] flex items-center justify-center rounded transition-colors touch-manipulation cursor-pointer',
       active
         ? 'bg-accent-light text-accent'
         : 'text-text-secondary hover:text-text-primary hover:bg-bg-secondary'

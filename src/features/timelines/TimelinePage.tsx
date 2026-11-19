@@ -233,7 +233,7 @@ export const TimelinePage: React.FC = () => {
 
         {/* View mode switcher & quick stats */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-3 pt-3 border-t border-border/70">
-          <div className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-md border border-border/80">
+          <div className="flex items-center gap-1 bg-bg-secondary p-0.5 rounded-md border border-border/80 overflow-x-auto scrollbar-thin max-w-full">
             <button
               onClick={() => setViewMode('horizontal')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${

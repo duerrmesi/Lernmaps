@@ -40,6 +40,7 @@ export const TaskcardsPage: React.FC = () => {
 
   const canvasRef = useRef<HTMLDivElement>(null);
   const [dragging, setDragging] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [isDrawingMode, setIsDrawingMode] = useState(false);
   const canvasSize = { w: 2000, h: 1400 };
@@ -53,33 +54,44 @@ export const TaskcardsPage: React.FC = () => {
     createTaskcard(projectId, '', { x: offsetX, y: offsetY });
   };
 
-  const handleMouseDown = useCallback((e: React.MouseEvent, cardId: string) => {
+  const handlePointerDown = useCallback((e: React.PointerEvent<HTMLDivElement>, cardId: string) => {
     if (editingId) return;
-    e.preventDefault();
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
+
+    setSelectedId(cardId);
+    const target = e.currentTarget;
+    try {
+      target.setPointerCapture(e.pointerId);
+    } catch {}
 
     const startX = e.clientX - card.position.x;
     const startY = e.clientY - card.position.y;
     setDragging(cardId);
 
-    const handleMouseMove = (me: MouseEvent) => {
+    const handlePointerMove = (pe: PointerEvent) => {
       updateTaskcard(cardId, {
         position: {
-          x: Math.max(0, me.clientX - startX),
-          y: Math.max(0, me.clientY - startY),
+          x: Math.max(0, pe.clientX - startX),
+          y: Math.max(0, pe.clientY - startY),
         },
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = (pe: PointerEvent) => {
+      try {
+        target.releasePointerCapture(pe.pointerId);
+      } catch {}
       setDragging(null);
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
     };
 
-    document.addEventListener('mousemove', handleMouseMove);
-    document.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
   }, [cards, editingId, updateTaskcard]);
 
   return (
@@ -157,12 +169,17 @@ export const TaskcardsPage: React.FC = () => {
               key={card.id}
               card={card}
               isDragging={dragging === card.id}
+              isSelected={selectedId === card.id}
               isEditing={editingId === card.id}
-              onMouseDown={(e) => handleMouseDown(e, card.id)}
+              onPointerDown={(e) => handlePointerDown(e, card.id)}
+              onSelect={() => setSelectedId(card.id)}
               onEdit={() => setEditingId(card.id)}
               onStopEdit={() => setEditingId(null)}
               onUpdate={(updates) => updateTaskcard(card.id, updates)}
-              onDelete={() => deleteTaskcard(card.id)}
+              onDelete={() => {
+                deleteTaskcard(card.id);
+                if (selectedId === card.id) setSelectedId(null);
+              }}
             />
           ))}
         </div>
@@ -176,8 +193,10 @@ export const TaskcardsPage: React.FC = () => {
 interface TaskcardItemProps {
   card: Taskcard;
   isDragging: boolean;
+  isSelected: boolean;
   isEditing: boolean;
-  onMouseDown: (e: React.MouseEvent) => void;
+  onPointerDown: (e: React.PointerEvent<HTMLDivElement>) => void;
+  onSelect: () => void;
   onEdit: () => void;
   onStopEdit: () => void;
   onUpdate: (updates: Partial<Taskcard>) => void;
@@ -185,59 +204,68 @@ interface TaskcardItemProps {
 }
 
 const TaskcardItem: React.FC<TaskcardItemProps> = ({
-  card, isDragging, isEditing, onMouseDown, onEdit, onStopEdit, onUpdate, onDelete,
+  card, isDragging, isSelected, isEditing, onPointerDown, onSelect, onEdit, onStopEdit, onUpdate, onDelete,
 }) => {
   const [showColorPicker, setShowColorPicker] = useState(false);
 
   return (
     <div
       className={cn(
-        'absolute rounded border shadow-sm group select-none transition-shadow',
+        'absolute rounded border shadow-sm group select-none transition-shadow touch-none',
         COLOR_STYLES[card.color],
         isDragging ? 'shadow-panel cursor-grabbing' : 'cursor-grab hover:shadow-dropdown',
-        isEditing && 'cursor-default'
+        isEditing && 'cursor-default',
+        isSelected && 'ring-2 ring-accent/60'
       )}
       style={{ left: card.position.x, top: card.position.y, width: card.width, minHeight: card.height }}
-      onMouseDown={isEditing ? undefined : onMouseDown}
+      onPointerDown={isEditing ? undefined : onPointerDown}
+      onClick={() => { if (!isEditing) onSelect(); }}
+      onDoubleClick={() => onEdit()}
     >
       {/* Actions */}
-      <div className="absolute -top-2 right-0 opacity-0 group-hover:opacity-100 transition-opacity flex gap-1 pr-1">
+      <div className={cn(
+        "absolute -top-3 right-0 flex gap-1.5 pr-1 z-10 transition-opacity",
+        isSelected || isEditing ? "opacity-100" : "opacity-100 sm:opacity-0 group-hover:opacity-100"
+      )}>
         {/* Color picker */}
         <div className="relative">
           <button
-            onMouseDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => { e.stopPropagation(); setShowColorPicker(p => !p); }}
-            className="w-5 h-5 rounded-full border border-border bg-white flex items-center justify-center shadow-sm"
+            className="w-6 h-6 rounded-full border border-border bg-white flex items-center justify-center shadow-sm cursor-pointer"
+            title="Farbe wählen"
           >
-            <span className={cn('w-2.5 h-2.5 rounded-full', COLOR_DOT[card.color])} />
+            <span className={cn('w-3 h-3 rounded-full', COLOR_DOT[card.color])} />
           </button>
           {showColorPicker && (
-            <div className="absolute top-6 right-0 z-10 bg-white border border-border rounded shadow-dropdown p-2 flex gap-1">
+            <div className="absolute top-7 right-0 z-20 bg-white border border-border rounded-lg shadow-dropdown p-2 flex gap-1.5">
               {(Object.keys(COLOR_LABELS) as TaskcardColor[]).map(c => (
                 <button
                   key={c}
                   title={COLOR_LABELS[c]}
-                  onMouseDown={(e) => e.stopPropagation()}
+                  onPointerDown={(e) => e.stopPropagation()}
                   onClick={(e) => { e.stopPropagation(); onUpdate({ color: c }); setShowColorPicker(false); }}
-                  className={cn('w-4 h-4 rounded-full border-2 transition-transform hover:scale-110', COLOR_DOT[c], card.color === c ? 'border-text-primary' : 'border-transparent')}
+                  className={cn('w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 cursor-pointer', COLOR_DOT[c], card.color === c ? 'border-text-primary' : 'border-transparent')}
                 />
               ))}
             </div>
           )}
         </div>
         <button
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onEdit(); }}
-          className="w-5 h-5 rounded-full bg-white border border-border flex items-center justify-center shadow-sm hover:bg-bg-secondary"
+          className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shadow-sm hover:bg-bg-secondary cursor-pointer"
+          title="Bearbeiten"
         >
-          <Edit2 size={10} className="text-text-secondary" />
+          <Edit2 size={11} className="text-text-secondary" />
         </button>
         <button
-          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => { e.stopPropagation(); onDelete(); }}
-          className="w-5 h-5 rounded-full bg-white border border-border flex items-center justify-center shadow-sm hover:bg-danger-light"
+          className="w-6 h-6 rounded-full bg-white border border-border flex items-center justify-center shadow-sm hover:bg-danger-light cursor-pointer"
+          title="Löschen"
         >
-          <Trash2 size={10} className="text-danger" />
+          <Trash2 size={11} className="text-danger" />
         </button>
       </div>
 

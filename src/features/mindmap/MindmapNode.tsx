@@ -1,6 +1,6 @@
 import React, { memo, useState, useRef, useEffect } from 'react';
 import { Handle, Position, type NodeProps } from '@xyflow/react';
-import { Plus, Trash2, Check, FileText, Link2 } from 'lucide-react';
+import { Plus, Trash2, Check, FileText, Link2, Edit2 } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import type { NodeAttachment, NodeFontSize, NodeImageSize } from '../../types';
 import { formatFileSize } from '../../utils/attachmentStorage';
@@ -238,39 +238,53 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
 
       {/* Label / Inline Editor */}
       {editing ? (
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
           <input
             ref={inputRef}
             value={editValue}
             onChange={(e) => setEditValue(e.target.value)}
             onKeyDown={handleKeyDown}
             onBlur={handleRenameCommit}
-            className="text-text-primary bg-transparent outline-none w-full min-w-[70px]"
+            className="text-text-primary bg-transparent outline-none w-full min-w-[70px] border-b border-accent"
             style={{
               fontSize: `${currentFontSize}px`,
               lineHeight: `${currentLineHeight}px`,
             }}
           />
-          <button onClick={handleRenameCommit} className="text-accent shrink-0">
-            <Check size={11} />
+          <button onClick={handleRenameCommit} className="text-accent shrink-0 p-1">
+            <Check size={13} />
           </button>
         </div>
       ) : (
-        <span
-          className={cn(
-            'text-text-primary block break-words',
-            metrics.weightClass,
-            d.isRoot && 'font-semibold'
+        <div className="flex items-center justify-between gap-1">
+          <span
+            className={cn(
+              'text-text-primary block break-words flex-1',
+              metrics.weightClass,
+              d.isRoot && 'font-semibold'
+            )}
+            style={{
+              fontSize: `${currentFontSize}px`,
+              lineHeight: `${currentLineHeight}px`,
+            }}
+            onDoubleClick={handleDoubleClick}
+            title="Doppelklick oder Stiftsymbol zum Umbenennen"
+          >
+            {d.label}
+          </span>
+          {isActive && (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditing(true);
+              }}
+              className="p-1 rounded text-text-disabled hover:text-text-primary hover:bg-bg-secondary shrink-0 transition-colors cursor-pointer"
+              title="Knoten umbenennen"
+            >
+              <Edit2 size={11} />
+            </button>
           )}
-          style={{
-            fontSize: `${currentFontSize}px`,
-            lineHeight: `${currentLineHeight}px`,
-          }}
-          onDoubleClick={handleDoubleClick}
-          title="Doppelklick zum Umbenennen"
-        >
-          {d.label}
-        </span>
+        </div>
       )}
 
       {/* Attachments: Images */}
@@ -322,14 +336,18 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
           {files.map((file) => (
             <div
               key={file.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                d.onOpenFile?.(file);
+              }}
               onDoubleClick={(e) => {
                 e.stopPropagation();
                 d.onOpenFile?.(file);
               }}
-              className="flex items-center gap-1.5 px-2 py-1 rounded bg-bg-secondary hover:bg-bg-tertiary border border-border/50 text-[11px] text-text-primary transition-colors cursor-pointer group/file"
-              title={`${file.name} (Doppelklick zum Öffnen)`}
+              className="flex items-center gap-1.5 px-2 py-1.5 rounded bg-bg-secondary hover:bg-bg-tertiary border border-border/50 text-[11px] text-text-primary transition-colors cursor-pointer group/file"
+              title={`${file.name} (Klicken zum Öffnen)`}
             >
-              <FileText size={12} className="shrink-0 text-text-secondary group-hover/file:text-text-primary" />
+              <FileText size={13} className="shrink-0 text-text-secondary group-hover/file:text-text-primary" />
               <span
                 className="truncate flex-1 font-medium"
                 style={{ fontSize: `${Math.round(11 * Math.min(fontScale, 1.4))}px` }}
@@ -342,21 +360,24 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
         </div>
       )}
 
-      {/* Hover action: Delete button at top-right corner (for ALL nodes, including root) */}
+      {/* Action: Delete button at top-right corner */}
       {!editing && (
         <button
           onClick={(e) => {
             e.stopPropagation();
             d.onDelete(d.nodeId);
           }}
-          className="absolute -top-2 -right-2 w-5 h-5 rounded-full bg-white border border-border text-text-disabled hover:text-danger hover:border-danger hover:scale-110 flex items-center justify-center shadow transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+          className={cn(
+            "absolute -top-3 -right-3 w-6 h-6 rounded-full bg-white border border-border text-text-disabled hover:text-danger hover:border-danger hover:scale-110 flex items-center justify-center shadow transition-all z-20 cursor-pointer",
+            isActive ? "opacity-100 scale-100" : "opacity-0 group-hover:opacity-100"
+          )}
           title="Knoten löschen"
         >
-          <Trash2 size={10} />
+          <Trash2 size={11} />
         </button>
       )}
 
-      {/* Hover action: Connect button at top-left corner */}
+      {/* Action: Connect button at top-left corner */}
       {!editing && (
         <div
           onClick={(e) => {
@@ -368,12 +389,12 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
             }
           }}
           className={cn(
-            'absolute -top-2 -left-2 w-5 h-5 rounded-full bg-white border border-border text-text-secondary hover:text-white hover:bg-[#0D0D0D] hover:border-[#0D0D0D] hover:scale-110 flex items-center justify-center shadow transition-all z-20 cursor-pointer group/connectbtn',
-            d.isConnectingSource ? 'opacity-100 bg-[#0D0D0D] text-white border-[#0D0D0D]' : 'opacity-0 group-hover:opacity-100'
+            'absolute -top-3 -left-3 w-6 h-6 rounded-full bg-white border border-border text-text-secondary hover:text-white hover:bg-[#0D0D0D] hover:border-[#0D0D0D] hover:scale-110 flex items-center justify-center shadow transition-all z-20 cursor-pointer group/connectbtn',
+            d.isConnectingSource ? 'opacity-100 bg-[#0D0D0D] text-white border-[#0D0D0D]' : isActive ? 'opacity-100 scale-100' : 'opacity-0 group-hover:opacity-100'
           )}
           title="Verbindungslinie ziehen oder Zielknoten auswählen"
         >
-          <Link2 size={10} />
+          <Link2 size={11} />
           {/* React Flow Source Handle inside the Connect button for drag-to-connect */}
           <Handle
             id="source-connect"
@@ -385,7 +406,7 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
         </div>
       )}
 
-      {/* Hover actions: 4 Plus buttons on each side */}
+      {/* Actions: 4 Plus buttons on each side */}
       {!editing && (
         <>
           {/* Top Plus */}
@@ -394,10 +415,13 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
               e.stopPropagation();
               d.onAddChild(d.nodeId, 'top');
             }}
-            className="absolute -top-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+            className={cn(
+              "absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all z-20 cursor-pointer",
+              isActive ? "opacity-100 scale-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title="Knoten oben hinzufügen"
           >
-            <Plus size={10} strokeWidth={2.5} />
+            <Plus size={12} strokeWidth={2.5} />
           </button>
 
           {/* Bottom Plus */}
@@ -406,10 +430,13 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
               e.stopPropagation();
               d.onAddChild(d.nodeId, 'bottom');
             }}
-            className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 w-5 h-5 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+            className={cn(
+              "absolute -bottom-3 left-1/2 -translate-x-1/2 w-6 h-6 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all z-20 cursor-pointer",
+              isActive ? "opacity-100 scale-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title="Knoten unten hinzufügen"
           >
-            <Plus size={10} strokeWidth={2.5} />
+            <Plus size={12} strokeWidth={2.5} />
           </button>
 
           {/* Left Plus */}
@@ -418,10 +445,13 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
               e.stopPropagation();
               d.onAddChild(d.nodeId, 'left');
             }}
-            className="absolute -left-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+            className={cn(
+              "absolute -left-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all z-20 cursor-pointer",
+              isActive ? "opacity-100 scale-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title="Knoten links hinzufügen"
           >
-            <Plus size={10} strokeWidth={2.5} />
+            <Plus size={12} strokeWidth={2.5} />
           </button>
 
           {/* Right Plus */}
@@ -430,10 +460,13 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
               e.stopPropagation();
               d.onAddChild(d.nodeId, 'right');
             }}
-            className="absolute -right-2.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all opacity-0 group-hover:opacity-100 z-20 cursor-pointer"
+            className={cn(
+              "absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-[#0D0D0D] text-white flex items-center justify-center hover:bg-accent hover:scale-110 shadow transition-all z-20 cursor-pointer",
+              isActive ? "opacity-100 scale-100" : "opacity-0 group-hover:opacity-100"
+            )}
             title="Knoten rechts hinzufügen"
           >
-            <Plus size={10} strokeWidth={2.5} />
+            <Plus size={12} strokeWidth={2.5} />
           </button>
         </>
       )}

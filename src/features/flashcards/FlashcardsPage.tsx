@@ -92,18 +92,20 @@ export const FlashcardsPage: React.FC = () => {
                     <p className="text-sm font-medium text-text-primary mb-1">{card.front}</p>
                     <p className="text-sm text-text-secondary">{card.back}</p>
                   </div>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                  <div className="flex gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                     <button
                       onClick={() => { setEditCard(card); setEditFront(card.front); setEditBack(card.back); }}
-                      className="p-1.5 rounded text-text-disabled hover:text-text-primary hover:bg-bg-secondary transition-colors"
+                      className="p-2 rounded text-text-secondary hover:text-text-primary hover:bg-bg-secondary transition-colors cursor-pointer"
+                      title="Karte bearbeiten"
                     >
-                      <Edit2 size={13} />
+                      <Edit2 size={14} />
                     </button>
                     <button
                       onClick={() => handleDelete(card.id)}
-                      className="p-1.5 rounded text-text-disabled hover:text-danger hover:bg-danger-light transition-colors"
+                      className="p-2 rounded text-text-secondary hover:text-danger hover:bg-danger-light transition-colors cursor-pointer"
+                      title="Karte löschen"
                     >
-                      <Trash2 size={13} />
+                      <Trash2 size={14} />
                     </button>
                   </div>
                 </div>

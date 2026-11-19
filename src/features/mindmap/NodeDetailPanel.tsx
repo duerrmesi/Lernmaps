@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { X, Plus, Link, Trash2, FileText, Loader2, Link2 } from 'lucide-react';
+import { X, Plus, Link, Trash2, FileText, Loader2, Link2, Check, Edit2 } from 'lucide-react';
 import { useStore } from '../../store';
 import type { MindmapNode, NodeAttachment, NodeFontSize, NodeImageSize } from '../../types';
 import { Button } from '../../components/Button';
@@ -47,6 +47,9 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   } = useStore();
 
   const [content, setContent] = useState(node.content);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleValue, setTitleValue] = useState(node.title);
+  const titleInputRef = useRef<HTMLInputElement>(null);
   const [showLinkNote, setShowLinkNote] = useState(false);
   const [showLinkFlashcard, setShowLinkFlashcard] = useState(false);
   const [showLinkTaskcard, setShowLinkTaskcard] = useState(false);
@@ -60,6 +63,24 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   useEffect(() => {
     setContent(node.content);
   }, [node.id, node.content]);
+
+  useEffect(() => {
+    setTitleValue(node.title);
+  }, [node.id, node.title]);
+
+  useEffect(() => {
+    if (isEditingTitle) {
+      setTimeout(() => titleInputRef.current?.focus(), 50);
+    }
+  }, [isEditingTitle]);
+
+  const handleTitleCommit = () => {
+    const val = titleValue.trim();
+    if (val && val !== node.title) {
+      updateNode(node.id, { title: val });
+    }
+    setIsEditingTitle(false);
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -117,36 +138,66 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   };
 
   return (
-    <div className="w-[310px] h-full border-l border-border bg-white flex flex-col overflow-hidden animate-slide-in-right">
+    <div className="w-full sm:w-[310px] max-w-full h-full border-l border-border bg-white flex flex-col overflow-hidden animate-slide-in-right z-30">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-border shrink-0">
-        <div className="flex-1 min-w-0">
-          <h3 className="text-[12.5px] font-semibold text-text-primary truncate">{node.title}</h3>
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-border shrink-0 bg-white">
+        <div className="flex-1 min-w-0 mr-2">
+          {isEditingTitle ? (
+            <div className="flex items-center gap-1">
+              <input
+                ref={titleInputRef}
+                value={titleValue}
+                onChange={(e) => setTitleValue(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleTitleCommit();
+                  if (e.key === 'Escape') {
+                    setTitleValue(node.title);
+                    setIsEditingTitle(false);
+                  }
+                }}
+                onBlur={handleTitleCommit}
+                className="w-full text-[12.5px] font-semibold text-text-primary bg-bg-secondary px-2 py-1 rounded border border-accent outline-none"
+              />
+              <button onClick={handleTitleCommit} className="text-accent p-1 shrink-0 cursor-pointer" title="Bestätigen">
+                <Check size={14} />
+              </button>
+            </div>
+          ) : (
+            <div
+              onClick={() => setIsEditingTitle(true)}
+              className="flex items-center gap-1.5 cursor-pointer group/title"
+              title="Klicken zum Umbenennen"
+            >
+              <h3 className="text-[12.5px] font-semibold text-text-primary truncate">{node.title}</h3>
+              <Edit2 size={11} className="text-text-disabled group-hover/title:text-text-primary shrink-0 transition-colors" />
+            </div>
+          )}
         </div>
-        <div className="flex items-center gap-1 ml-2">
+        <div className="flex items-center gap-1 shrink-0">
           {onStartConnecting && (
             <button
               onClick={() => onStartConnecting(node.id)}
-              className="text-text-disabled hover:text-text-primary transition-colors p-1 rounded hover:bg-bg-secondary"
+              className="text-text-disabled hover:text-text-primary transition-colors p-1.5 rounded hover:bg-bg-secondary cursor-pointer"
               title="Mit anderem Knoten verbinden (A → B)"
             >
-              <Link2 size={13} />
+              <Link2 size={14} />
             </button>
           )}
           {onDeleteNode && (
             <button
               onClick={() => onDeleteNode(node.id)}
-              className="text-text-disabled hover:text-danger transition-colors p-1 rounded hover:bg-danger/10"
+              className="text-text-disabled hover:text-danger transition-colors p-1.5 rounded hover:bg-danger/10 cursor-pointer"
               title="Knoten löschen"
             >
-              <Trash2 size={13} />
+              <Trash2 size={14} />
             </button>
           )}
           <button
             onClick={onClose}
-            className="text-text-disabled hover:text-text-primary transition-colors p-1 rounded hover:bg-bg-secondary"
+            className="text-text-disabled hover:text-text-primary transition-colors p-1.5 rounded hover:bg-bg-secondary cursor-pointer"
+            title="Schließen"
           >
-            <X size={13} />
+            <X size={15} />
           </button>
         </div>
       </div>
@@ -316,10 +367,10 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
                   </div>
                   <button
                     onClick={() => handleRemoveAttachment(att.id)}
-                    className="opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger p-0.5 transition-opacity ml-1"
+                    className="opacity-100 sm:opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger p-1 transition-opacity ml-1 cursor-pointer"
                     title="Anhang löschen"
                   >
-                    <X size={12} />
+                    <X size={13} />
                   </button>
                 </div>
               ))}
@@ -333,27 +384,27 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
           <div className="grid grid-cols-2 gap-1.5 mt-1">
             <button
               onClick={() => onAddChild(node.id, 'right')}
-              className="py-1 px-2 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11px] text-text-primary font-medium flex items-center justify-center gap-1 border border-border/60 transition-colors"
+              className="py-1.5 px-2.5 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11.5px] text-text-primary font-medium flex items-center justify-center gap-1.5 border border-border/60 transition-colors cursor-pointer"
             >
-              <Plus size={10} strokeWidth={2.5} /> Rechts
+              <Plus size={12} strokeWidth={2.5} /> Rechts
             </button>
             <button
               onClick={() => onAddChild(node.id, 'left')}
-              className="py-1 px-2 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11px] text-text-primary font-medium flex items-center justify-center gap-1 border border-border/60 transition-colors"
+              className="py-1.5 px-2.5 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11.5px] text-text-primary font-medium flex items-center justify-center gap-1.5 border border-border/60 transition-colors cursor-pointer"
             >
-              <Plus size={10} strokeWidth={2.5} /> Links
+              <Plus size={12} strokeWidth={2.5} /> Links
             </button>
             <button
               onClick={() => onAddChild(node.id, 'top')}
-              className="py-1 px-2 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11px] text-text-primary font-medium flex items-center justify-center gap-1 border border-border/60 transition-colors"
+              className="py-1.5 px-2.5 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11.5px] text-text-primary font-medium flex items-center justify-center gap-1.5 border border-border/60 transition-colors cursor-pointer"
             >
-              <Plus size={10} strokeWidth={2.5} /> Oben
+              <Plus size={12} strokeWidth={2.5} /> Oben
             </button>
             <button
               onClick={() => onAddChild(node.id, 'bottom')}
-              className="py-1 px-2 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11px] text-text-primary font-medium flex items-center justify-center gap-1 border border-border/60 transition-colors"
+              className="py-1.5 px-2.5 rounded bg-bg-secondary hover:bg-bg-tertiary text-[11.5px] text-text-primary font-medium flex items-center justify-center gap-1.5 border border-border/60 transition-colors cursor-pointer"
             >
-              <Plus size={10} strokeWidth={2.5} /> Unten
+              <Plus size={12} strokeWidth={2.5} /> Unten
             </button>
           </div>
         </Section>
@@ -365,7 +416,7 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
           action={
             <button
               onClick={() => setShowLinkNote(true)}
-              className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
+              className="text-[11px] text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
             >
               <Link size={10} strokeWidth={2.5} /> Verknüpfen
             </button>
@@ -375,18 +426,19 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             <p className="text-[11.5px] text-text-disabled">–</p>
           ) : (
             linkedNotes.map((n) => (
-              <div key={n.id} className="flex items-center justify-between py-0.5 group">
+              <div key={n.id} className="flex items-center justify-between py-1 group">
                 <button
-                  className="text-[12px] text-accent hover:underline truncate"
+                  className="text-[12px] text-accent hover:underline truncate cursor-pointer"
                   onClick={() => navigate(`/projects/${projectId}/notes/${n.id}`)}
                 >
                   {n.title}
                 </button>
                 <button
                   onClick={() => unlinkNoteFromNode(n.id, node.id)}
-                  className="opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-0.5"
+                  className="opacity-100 sm:opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-1 cursor-pointer"
+                  title="Verknüpfung aufheben"
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </div>
             ))
@@ -401,13 +453,13 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             <div className="flex gap-2">
               <button
                 onClick={() => setShowNewFlashcard(true)}
-                className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
+                className="text-[11px] text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
               >
                 <Plus size={10} strokeWidth={2.5} /> Neu
               </button>
               <button
                 onClick={() => setShowLinkFlashcard(true)}
-                className="text-[11px] text-text-secondary hover:text-text-primary flex items-center gap-0.5"
+                className="text-[11px] text-text-secondary hover:text-text-primary flex items-center gap-0.5 cursor-pointer"
               >
                 <Link size={10} strokeWidth={2.5} /> Verknüpfen
               </button>
@@ -418,13 +470,14 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             <p className="text-[11.5px] text-text-disabled">–</p>
           ) : (
             linkedFlashcards.map((f) => (
-              <div key={f.id} className="flex items-center justify-between py-0.5 group">
+              <div key={f.id} className="flex items-center justify-between py-1 group">
                 <span className="text-[12px] text-text-primary truncate">{f.front}</span>
                 <button
                   onClick={() => unlinkFlashcardFromNode(f.id, node.id)}
-                  className="opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-0.5"
+                  className="opacity-100 sm:opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-1 cursor-pointer"
+                  title="Verknüpfung aufheben"
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </div>
             ))
@@ -438,7 +491,7 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
           action={
             <button
               onClick={() => setShowLinkTaskcard(true)}
-              className="text-[11px] text-accent hover:underline flex items-center gap-0.5"
+              className="text-[11px] text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
             >
               <Link size={10} strokeWidth={2.5} /> Verknüpfen
             </button>
@@ -448,13 +501,14 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             <p className="text-[11.5px] text-text-disabled">–</p>
           ) : (
             linkedTaskcards.map((t) => (
-              <div key={t.id} className="flex items-center justify-between py-0.5 group">
+              <div key={t.id} className="flex items-center justify-between py-1 group">
                 <span className="text-[12px] text-text-primary truncate">{t.title || 'Taskcard'}</span>
                 <button
                   onClick={() => unlinkTaskcardFromNode(t.id, node.id)}
-                  className="opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-0.5"
+                  className="opacity-100 sm:opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-1 cursor-pointer"
+                  title="Verknüpfung aufheben"
                 >
-                  <X size={10} />
+                  <X size={12} />
                 </button>
               </div>
             ))

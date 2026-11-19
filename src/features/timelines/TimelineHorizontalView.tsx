@@ -73,20 +73,20 @@ const TimelineCard: React.FC<{
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-1 pt-1.5 border-t border-border/60">
+      <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-border/60">
         <button
           onClick={() => onEdit(event)}
-          className="p-1 text-text-disabled hover:text-text-primary hover:bg-bg-secondary rounded transition-colors"
+          className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-secondary rounded transition-colors cursor-pointer"
           title="Bearbeiten"
         >
-          <Edit2 size={11} />
+          <Edit2 size={13} />
         </button>
         <button
           onClick={() => onDelete(event.id)}
-          className="p-1 text-text-disabled hover:text-danger hover:bg-danger-light rounded transition-colors"
+          className="p-1.5 text-text-secondary hover:text-danger hover:bg-danger-light rounded transition-colors cursor-pointer"
           title="Löschen"
         >
-          <Trash2 size={11} />
+          <Trash2 size={13} />
         </button>
       </div>
     </div>
@@ -146,20 +146,20 @@ const TimelineSpanCard: React.FC<{
       )}
 
       {/* Actions */}
-      <div className="flex items-center justify-end gap-1 pt-1.5 border-t border-border/60">
+      <div className="flex items-center justify-end gap-1.5 pt-1.5 border-t border-border/60">
         <button
           onClick={() => onEdit(event)}
-          className="p-1 text-text-disabled hover:text-text-primary hover:bg-bg-secondary rounded transition-colors"
+          className="p-1.5 text-text-secondary hover:text-text-primary hover:bg-bg-secondary rounded transition-colors cursor-pointer"
           title="Bearbeiten"
         >
-          <Edit2 size={11} />
+          <Edit2 size={13} />
         </button>
         <button
           onClick={() => onDelete(event.id)}
-          className="p-1 text-text-disabled hover:text-danger hover:bg-danger-light rounded transition-colors"
+          className="p-1.5 text-text-secondary hover:text-danger hover:bg-danger-light rounded transition-colors cursor-pointer"
           title="Löschen"
         >
-          <Trash2 size={11} />
+          <Trash2 size={13} />
         </button>
       </div>
     </div>
@@ -251,7 +251,7 @@ export const TimelineHorizontalView: React.FC<TimelineHorizontalViewProps> = ({
       {/* Horizontal scroll track */}
       <div
         ref={containerRef}
-        className="overflow-x-auto scrollbar-thin py-6 px-4 min-h-[500px]"
+        className="overflow-x-auto scrollbar-thin py-6 px-4 min-h-[500px] touch-pan-x"
       >
         <div
           className="relative min-w-max pb-20 pt-8"

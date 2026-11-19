@@ -1,0 +1,60 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // =========================================================================
+    // HILFSFUNKTIONEN (Helper Functions)
+    // =========================================================================
+
+    // Prüft, ob der Nutzer über Firebase Auth eingeloggt ist
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Prüft, ob die UID des eingeloggten Nutzers mit der Dokument-ID übereinstimmt
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // =========================================================================
+    // 1. BENUTZERDATEN & CLOUD-BACKUPS (/users/{userId})
+    // =========================================================================
+    // Jeder eingeloggte Nutzer darf ausschließlich auf seine eigenen Daten zugreifen.
+    // Fremde Nutzer haben keinerlei Lese- oder Schreibrechte.
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // Unterstützt Chunking für große Datenbestände (> 600 KB) in Unterkollektionen
+      match /{allSubcollections=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // =========================================================================
+    // 2. GERÄTE-TRANSFER & QR-CODE FREIGABEN (/transfers/{code})
+    // =========================================================================
+    // Ermöglicht den temporären Transfer zwischen PC und Tablet/Handy mittels 6-stelligen Codes.
+    match /transfers/{code} {
+      // Lesen: Jeder mit gültigem Code darf lesen (z.B. Tablet scannt QR-Code)
+      allow get: if true;
+      
+      // Erstellen: Jeder darf einen Transfer-Slot mit gültigem Code anlegen
+      allow create: if code.size() == 6;
+
+      // Löschen/Aktualisieren nach Ablauf oder erfolgreichem Empfang
+      allow update, delete: if true;
+
+      // Auch Chunks für geteilte Transfers erlauben
+      match /{allSubcollections=**} {
+        allow read, write: if true;
+      }
+    }
+
+    // =========================================================================
+    // 3. STANDARD-SCHUTZ: Alles andere sperren (Default Deny)
+    // =========================================================================
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

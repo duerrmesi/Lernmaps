@@ -59,21 +59,21 @@ export const Modal: React.FC<ModalProps> = ({
       <div className="absolute inset-0 bg-black/35" />
       <div
         className={cn(
-          'relative z-10 w-full bg-white border border-border rounded shadow-modal',
+          'relative z-10 w-full mx-3 sm:mx-0 max-h-[92vh] flex flex-col bg-white border border-border rounded shadow-modal overflow-hidden',
           'animate-fade-in',
           sizes[size],
           className
         )}
       >
         {title && (
-          <div className="flex items-center justify-between px-4 py-3 border-b border-border">
+          <div className="flex items-center justify-between px-4 py-3 border-b border-border shrink-0">
             <h2 className="text-[13px] font-semibold text-text-primary tracking-tight">{title}</h2>
-            <Button variant="ghost" size="sm" onClick={onClose} className="h-5 w-5 p-0">
-              <X size={13} />
+            <Button variant="ghost" size="sm" onClick={onClose} className="h-6 w-6 p-0 cursor-pointer">
+              <X size={14} />
             </Button>
           </div>
         )}
-        <div className="p-4">{children}</div>
+        <div className="p-4 overflow-y-auto scrollbar-thin">{children}</div>
       </div>
     </div>
   );
