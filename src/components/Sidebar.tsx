@@ -16,6 +16,7 @@ import {
   QrCode,
   Cloud,
   PanelLeftClose,
+  BookMarked,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useSearchStore } from '../features/search/searchStore';
@@ -197,6 +198,7 @@ export const Sidebar: React.FC = () => {
             <NavItem to="/flashcards" icon={CreditCard} label="Karteikarten" onClick={handleNavClick} />
             <NavItem to="/notes"      icon={StickyNote} label="Notizen" onClick={handleNavClick} />
             <NavItem to="/taskcards"  icon={Layers}     label="Taskcards" onClick={handleNavClick} />
+            <NavItem to="/glossary"   icon={BookMarked} label="Glossar" onClick={handleNavClick} />
           </div>
         </nav>
 

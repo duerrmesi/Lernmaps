@@ -86,12 +86,27 @@ export interface Note {
 // ─── Flashcard ────────────────────────────────────────────────────────────────
 
 export type FlashcardDifficulty = 'again' | 'hard' | 'good' | 'easy';
+export type FlashcardType = 'standard' | 'occlusion';
+
+export interface OcclusionBox {
+  id: string;
+  x: number;      // Prozent 0-100
+  y: number;      // Prozent 0-100
+  width: number;  // Prozent 0-100
+  height: number; // Prozent 0-100
+  label?: string; // Optionaler Name / Lösung
+}
 
 export interface Flashcard {
   id: ID;
   projectId: ID;
   front: string;
   back: string;
+  cardType?: FlashcardType;
+  imageUrl?: string;
+  occlusionBoxes?: OcclusionBox[];
+  tags?: string[];
+  isReverse?: boolean; // Beidseitig abfragen
   linkedNodeIds: ID[];
   difficulty: FlashcardDifficulty | null;
   lastReviewed: string | null;
@@ -275,6 +290,23 @@ export interface Timeline {
   updatedAt: string;
 }
 
+// ─── Glossary ─────────────────────────────────────────────────────────────────
+
+export type GlossarySourceType = 'knowledgeNode' | 'flashcard' | 'mindmapNode' | 'note' | 'custom';
+
+export interface GlossaryTerm {
+  id: ID;
+  projectId: ID;
+  term: string;
+  definition: string;
+  sourceType: GlossarySourceType;
+  sourceTitle?: string;
+  sourceId?: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── App State ────────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -294,6 +326,7 @@ export interface AppState {
   examResults: Record<ID, ExamResult>;
   timelines: Record<ID, Timeline>;
   timelineEvents: Record<ID, TimelineEvent>;
+  glossaryTerms?: Record<ID, GlossaryTerm>;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -309,7 +342,8 @@ export type SearchResultType =
   | 'question'
   | 'exam'
   | 'timeline'
-  | 'timelineEvent';
+  | 'timelineEvent'
+  | 'glossary';
 
 export interface SearchResult {
   id: ID;

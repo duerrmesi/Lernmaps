@@ -28,6 +28,9 @@ import type {
   NodeAttachment,
   NodeFontSize,
   NodeImageSize,
+  FlashcardType,
+  OcclusionBox,
+  GlossaryTerm,
 } from '../types';
 import { generateId, now } from '../utils';
 
@@ -70,9 +73,25 @@ interface Actions {
   deleteNote: (id: ID) => void;
 
   // Flashcards
-  createFlashcard: (projectId: ID, front: string, back: string) => Flashcard;
+  createFlashcard: (
+    projectId: ID,
+    front: string,
+    back: string,
+    options?: {
+      cardType?: FlashcardType;
+      imageUrl?: string;
+      occlusionBoxes?: OcclusionBox[];
+      tags?: string[];
+      isReverse?: boolean;
+    }
+  ) => Flashcard;
   updateFlashcard: (id: ID, updates: Partial<Omit<Flashcard, 'id' | 'projectId' | 'createdAt'>>) => void;
   deleteFlashcard: (id: ID) => void;
+
+  // Glossary
+  createGlossaryTerm: (projectId: ID, term: string, definition: string, tags?: string[]) => GlossaryTerm;
+  updateGlossaryTerm: (id: ID, updates: Partial<Pick<GlossaryTerm, 'term' | 'definition' | 'tags'>>) => void;
+  deleteGlossaryTerm: (id: ID) => void;
 
   // Taskcards
   createTaskcard: (projectId: ID, title?: string, position?: NodePosition) => Taskcard;
@@ -166,6 +185,7 @@ export const useStore = create<StoreState>()(
       examResults: {},
       timelines: {},
       timelineEvents: {},
+      glossaryTerms: {},
 
       // ─── Projects ──────────────────────────────────────────────────────
       createProject: (title, description = '') => {
@@ -614,12 +634,17 @@ export const useStore = create<StoreState>()(
       },
 
       // ─── Flashcards ────────────────────────────────────────────────────
-      createFlashcard: (projectId, front, back) => {
+      createFlashcard: (projectId, front, back, options) => {
         const card: Flashcard = {
           id: generateId(),
           projectId,
           front,
           back,
+          cardType: options?.cardType || 'standard',
+          imageUrl: options?.imageUrl,
+          occlusionBoxes: options?.occlusionBoxes,
+          tags: options?.tags || [],
+          isReverse: options?.isReverse ?? false,
           linkedNodeIds: [],
           difficulty: null,
           lastReviewed: null,
@@ -651,6 +676,45 @@ export const useStore = create<StoreState>()(
             ])
           );
           return { flashcards, mindmapNodes };
+        });
+      },
+
+      // ─── Glossary ──────────────────────────────────────────────────────
+      createGlossaryTerm: (projectId, term, definition, tags = []) => {
+        const item: GlossaryTerm = {
+          id: generateId(),
+          projectId,
+          term,
+          definition,
+          sourceType: 'custom',
+          tags,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          glossaryTerms: { ...(s.glossaryTerms || {}), [item.id]: item },
+        }));
+        return item;
+      },
+
+      updateGlossaryTerm: (id, updates) => {
+        set((s) => {
+          const current = (s.glossaryTerms || {})[id];
+          if (!current) return s;
+          return {
+            glossaryTerms: {
+              ...(s.glossaryTerms || {}),
+              [id]: { ...current, ...updates, updatedAt: now() },
+            },
+          };
+        });
+      },
+
+      deleteGlossaryTerm: (id) => {
+        set((s) => {
+          const terms = { ...(s.glossaryTerms || {}) };
+          delete terms[id];
+          return { glossaryTerms: terms };
         });
       },
 
@@ -1418,34 +1482,41 @@ export function getSerializableState(): AppState {
 
 /**
  * Safely imports and applies an entire state payload into the Zustand store
- * and persists it to both localStorage and local file on disk
+ * and persists it to both localStorage and local file on disk.
+ * Enthält Validierungsprüfungen zum Schutz vor Prototype Pollution und beschädigten Backups.
  */
 export function importFullState(payload: any, persistToDisk = true): boolean {
   if (!payload) return false;
   try {
     const rawState = payload.state ? payload.state : payload;
-    if (typeof rawState !== 'object') return false;
+    if (!rawState || typeof rawState !== 'object' || Array.isArray(rawState)) return false;
+
+    // Hilfsfunktionen zur Typsicherung
+    const safeObj = (val: any, fallback: any) =>
+      val !== null && typeof val === 'object' && !Array.isArray(val) ? val : fallback;
+    const safeArr = (val: any, fallback: any) =>
+      Array.isArray(val) ? val : fallback;
 
     setSyncPaused(true);
     try {
       useStore.setState((current) => ({
         ...current,
-        projects: rawState.projects ?? current.projects,
-        mindmaps: rawState.mindmaps ?? current.mindmaps,
-        mindmapNodes: rawState.mindmapNodes ?? current.mindmapNodes,
-        mindmapEdges: rawState.mindmapEdges ?? current.mindmapEdges,
-        notes: rawState.notes ?? current.notes,
-        flashcards: rawState.flashcards ?? current.flashcards,
-        taskcards: rawState.taskcards ?? current.taskcards,
-        drawings: rawState.drawings ?? current.drawings,
-        knowledgeNodes: rawState.knowledgeNodes ?? current.knowledgeNodes,
-        learningEvents: rawState.learningEvents ?? current.learningEvents,
-        questions: rawState.questions ?? current.questions,
-        mistakes: rawState.mistakes ?? current.mistakes,
-        exams: rawState.exams ?? current.exams,
-        examResults: rawState.examResults ?? current.examResults,
-        timelines: rawState.timelines ?? current.timelines ?? {},
-        timelineEvents: rawState.timelineEvents ?? current.timelineEvents ?? {},
+        projects: safeObj(rawState.projects, current.projects),
+        mindmaps: safeObj(rawState.mindmaps, current.mindmaps),
+        mindmapNodes: safeObj(rawState.mindmapNodes, current.mindmapNodes),
+        mindmapEdges: safeObj(rawState.mindmapEdges, current.mindmapEdges),
+        notes: safeObj(rawState.notes, current.notes),
+        flashcards: safeObj(rawState.flashcards, current.flashcards),
+        taskcards: safeObj(rawState.taskcards, current.taskcards),
+        drawings: safeObj(rawState.drawings, current.drawings),
+        knowledgeNodes: safeObj(rawState.knowledgeNodes, current.knowledgeNodes),
+        learningEvents: safeArr(rawState.learningEvents, current.learningEvents),
+        questions: safeObj(rawState.questions, current.questions),
+        mistakes: safeObj(rawState.mistakes, current.mistakes),
+        exams: safeObj(rawState.exams, current.exams),
+        examResults: safeArr(rawState.examResults, current.examResults),
+        timelines: safeObj(rawState.timelines, current.timelines ?? {}),
+        timelineEvents: safeObj(rawState.timelineEvents, current.timelineEvents ?? {}),
       }));
     } finally {
       setSyncPaused(false);

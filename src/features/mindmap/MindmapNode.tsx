@@ -14,6 +14,11 @@ interface MindmapNodeData {
   fontSize?: NodeFontSize;
   imageSize?: NodeImageSize;
   fontScale?: number;
+  masteryStatus?: 'NOT_LEARNED' | 'LEARNING' | 'WEAK' | 'KNOWN' | 'MASTERED' | null;
+  hasChildren?: boolean;
+  descendantCount?: number;
+  isCollapsed?: boolean;
+  onToggleCollapse?: (nodeId: string) => void;
   onSelect: (id: string) => void;
   onAddChild: (parentId: string, direction?: 'right' | 'left' | 'top' | 'bottom') => void;
   onDelete: (id: string) => void;
@@ -173,6 +178,54 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
         <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 bg-accent text-white text-[9px] font-medium px-2 py-0.5 rounded-full whitespace-nowrap shadow-md pointer-events-none z-30 opacity-0 group-hover:opacity-100 transition-opacity">
           Hierhin verbinden
         </div>
+      )}
+
+      {/* Lernfortschritts-Ampel (Mastery Indicator Dot) */}
+      {d.masteryStatus && (
+        <div
+          className={cn(
+            'absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full border-2 border-white shadow-xs z-20 pointer-events-auto',
+            (d.masteryStatus === 'MASTERED' || d.masteryStatus === 'KNOWN') &&
+              'bg-emerald-500 ring-2 ring-emerald-500/20',
+            d.masteryStatus === 'LEARNING' && 'bg-amber-400 ring-2 ring-amber-400/20',
+            (d.masteryStatus === 'WEAK' || d.masteryStatus === 'NOT_LEARNED') &&
+              'bg-rose-500 ring-2 ring-rose-500/20'
+          )}
+          title={`Lernstatus: ${{
+            MASTERED: 'Gemeistert (Sehr gut)',
+            KNOWN: 'Bekannt / Gelernt',
+            LEARNING: 'Wird gerade gelernt',
+            WEAK: 'Wiederholen nötig',
+            NOT_LEARNED: 'Noch nicht gelernt',
+          }[d.masteryStatus]}`}
+        />
+      )}
+
+      {/* Faltbare Teilbäume (Collapse / Expand toggle button) */}
+      {d.hasChildren && !editing && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            d.onToggleCollapse?.(d.nodeId);
+          }}
+          className={cn(
+            'absolute -bottom-2.5 right-2 px-1.5 h-5 rounded-full border shadow-xs text-[10px] font-semibold flex items-center justify-center gap-0.5 transition-all z-20 cursor-pointer select-none',
+            d.isCollapsed
+              ? 'bg-[#0D0D0D] text-white border-[#0D0D0D] hover:bg-black scale-105'
+              : 'bg-white hover:bg-bg-secondary text-text-secondary hover:text-text-primary border-border'
+          )}
+          title={d.isCollapsed ? 'Unterknoten ausklappen' : 'Unterknoten einklappen'}
+        >
+          {d.isCollapsed ? (
+            <>
+              <span>+</span>
+              <span className="text-[9px]">{d.descendantCount || 1}</span>
+            </>
+          ) : (
+            <span>−</span>
+          )}
+        </button>
       )}
 
       {/* 4 Handles for all 4 directions */}

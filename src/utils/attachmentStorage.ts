@@ -106,13 +106,29 @@ export async function openFileAttachment(att: NodeAttachment): Promise<void> {
   }
 
   try {
-    const blob = dataUrlToBlob(data, att.mimeType || 'application/octet-stream');
+    const mime = (att.mimeType || 'application/octet-stream').toLowerCase();
+    const blob = dataUrlToBlob(data, mime);
     const blobUrl = URL.createObjectURL(blob);
 
-    // Try to open in a new browser tab
-    const win = window.open(blobUrl, '_blank');
-    if (!win) {
-      // Fallback: download if popup blocker caught it
+    // Sicherheitsprüfung: Nur sichere Standardformate (Bilder, PDF) direkt im Tab öffnen.
+    // HTML, SVG oder andere ausführbare Formate werden zum Schutz vor Script-Execution
+    // direkt als Download ausgelöst.
+    const safeInlineTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/gif', 'application/pdf'];
+    const canOpenInline = safeInlineTypes.includes(mime);
+
+    if (canOpenInline) {
+      const win = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      if (!win) {
+        // Fallback: download if popup blocker caught it
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = att.name;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } else {
+      // Sicheres Herunterladen für alle sonstigen Dateitypen
       const a = document.createElement('a');
       a.href = blobUrl;
       a.download = att.name;

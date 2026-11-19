@@ -142,7 +142,9 @@ export class AIService {
       const apiKey = keys[i];
       try {
         if (provider === 'gemini') {
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+          const safeModel = encodeURIComponent(model);
+          const safeKey = encodeURIComponent(apiKey);
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${safeModel}:generateContent?key=${safeKey}`;
           const body: any = {
             contents: [{ parts: [{ text: prompt }] }],
             generationConfig: { responseMimeType: "application/json" }
@@ -159,7 +161,9 @@ export class AIService {
 
           if (!response.ok) {
             const text = await response.text();
-            throw new Error(`API Error: ${response.statusText} - ${text}`);
+            // Verhindere, dass API-Schlüssel in Fehlermeldungen auftauchen
+            const safeErr = text.replace(new RegExp(apiKey, 'g'), '***');
+            throw new Error(`API Error: ${response.statusText} - ${safeErr}`);
           }
 
           const data = await response.json();

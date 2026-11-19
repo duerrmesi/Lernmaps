@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, Network, CreditCard, StickyNote, Layers, Milestone, Trash2, Edit2, ChevronRight } from 'lucide-react';
+import { Plus, Network, CreditCard, StickyNote, Layers, Milestone, Trash2, Edit2, ChevronRight, BookMarked } from 'lucide-react';
 import { useStore } from '../../store';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
@@ -210,6 +210,21 @@ export const ProjectDetail: React.FC = () => {
         >
           <p className="text-[12.5px] text-text-secondary py-1">
             {projectTaskcards.length === 0 ? 'Noch keine Taskcards' : `${projectTaskcards.length} Karten`}
+          </p>
+        </Section>
+
+        {/* Glossar */}
+        <Section
+          icon={<BookMarked size={13} strokeWidth={1.8} />}
+          title="Automatisches Glossar"
+          action={
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/projects/${projectId}/glossary`)}>
+              Öffnen
+            </Button>
+          }
+        >
+          <p className="text-[12.5px] text-text-secondary py-1">
+            A–Z Index aller Fachbegriffe & Definitionen aus deinen Materialien
           </p>
         </Section>
       </div>

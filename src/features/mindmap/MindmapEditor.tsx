@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useState, useRef, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -39,6 +39,7 @@ import {
   AlertTriangle,
   Type,
   Link2,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { DrawingOverlay } from '../canvas/DrawingOverlay';
 import { cn } from '../../utils/cn';
@@ -200,63 +201,160 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connectingFromNodeId, editingEdgeId]);
 
+  // Knowledge nodes for mastery level indicators
+  const knowledgeNodes = useStore((s) => s.knowledgeNodes);
+
+  // Collapsed branches state (Faltbare Teilbäume)
+  const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
+
+  const toggleCollapseNode = useCallback((nodeId: string) => {
+    setCollapsedNodeIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) {
+        next.delete(nodeId);
+      } else {
+        next.add(nodeId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleCollapseAll = useCallback(() => {
+    setCollapsedNodeIds((prev) => {
+      if (prev.size > 0) {
+        return new Set();
+      }
+      const nodesWithChildren = new Set<string>();
+      storeNodes.forEach((n) => {
+        if (storeNodes.some((c) => c.parentId === n.id)) {
+          nodesWithChildren.add(n.id);
+        }
+      });
+      return nodesWithChildren;
+    });
+  }, [storeNodes]);
+
+  // Recursively calculate all hidden descendant node IDs
+  const hiddenNodeIds = useMemo(() => {
+    const hidden = new Set<string>();
+    const addDescendants = (parentId: string) => {
+      const children = storeNodes.filter((n) => n.parentId === parentId);
+      children.forEach((c) => {
+        hidden.add(c.id);
+        addDescendants(c.id);
+      });
+    };
+
+    collapsedNodeIds.forEach((id) => {
+      addDescendants(id);
+    });
+
+    return hidden;
+  }, [storeNodes, collapsedNodeIds]);
+
+  const visibleStoreNodes = useMemo(() => {
+    return storeNodes.filter((n) => !hiddenNodeIds.has(n.id));
+  }, [storeNodes, hiddenNodeIds]);
+
+  const visibleStoreEdges = useMemo(() => {
+    return storeEdges.filter(
+      (e) => !hiddenNodeIds.has(e.sourceId) && !hiddenNodeIds.has(e.targetId)
+    );
+  }, [storeEdges, hiddenNodeIds]);
+
   // Convert store nodes to React Flow nodes
   const toFlowNodes = useCallback(
     (nodes: MindmapNode[]): FlowNode[] => {
-      return nodes.map((n) => ({
-        id: n.id,
-        type: 'mindmapNode',
-        position: n.position,
-        data: {
-          label: n.title,
-          nodeId: n.id,
-          isRoot: n.parentId === null,
-          isSelected: n.id === selectedNodeId,
-          attachments: n.attachments || [],
-          fontSize: n.fontSize || (n.parentId === null ? 'lg' : 'md'),
-          imageSize: n.imageSize || 'md',
-          fontScale,
-          isConnectingSource: connectingFromNodeId === n.id,
-          isConnectingCandidate: connectingFromNodeId !== null && connectingFromNodeId !== n.id,
-          onStartConnecting: (id: string) => {
-            setConnectingFromNodeId((prev) => (prev === id ? null : id));
+      return nodes.map((n) => {
+        const directChildren = storeNodes.filter((c) => c.parentId === n.id);
+        const hasChildren = directChildren.length > 0;
+        const descendantCount = countDescendants(n.id);
+        const isCollapsed = collapsedNodeIds.has(n.id);
+
+        // Look up mastery status
+        let masteryStatus: 'NOT_LEARNED' | 'LEARNING' | 'WEAK' | 'KNOWN' | 'MASTERED' | null = null;
+        if (n.knowledgeNodeId && knowledgeNodes[n.knowledgeNodeId]) {
+          masteryStatus = knowledgeNodes[n.knowledgeNodeId].overallStatus;
+        } else {
+          const match = Object.values(knowledgeNodes).find(
+            (kn) => kn.projectId === projectId && kn.title.toLowerCase().trim() === n.title.toLowerCase().trim()
+          );
+          if (match) masteryStatus = match.overallStatus;
+        }
+
+        return {
+          id: n.id,
+          type: 'mindmapNode',
+          position: n.position,
+          data: {
+            label: n.title,
+            nodeId: n.id,
+            isRoot: n.parentId === null,
+            isSelected: n.id === selectedNodeId,
+            attachments: n.attachments || [],
+            fontSize: n.fontSize || (n.parentId === null ? 'lg' : 'md'),
+            imageSize: n.imageSize || 'md',
+            fontScale,
+            masteryStatus,
+            hasChildren,
+            descendantCount,
+            isCollapsed,
+            onToggleCollapse: toggleCollapseNode,
+            isConnectingSource: connectingFromNodeId === n.id,
+            isConnectingCandidate: connectingFromNodeId !== null && connectingFromNodeId !== n.id,
+            onStartConnecting: (id: string) => {
+              setConnectingFromNodeId((prev) => (prev === id ? null : id));
+            },
+            onCompleteConnecting: (targetId: string) => {
+              if (connectingFromNodeId) {
+                handleCreateConnection(connectingFromNodeId, targetId);
+              }
+            },
+            onSelect: (id: string) => setSelectedNodeId(id),
+            onAddChild: (parentId: string, direction: 'right' | 'left' | 'top' | 'bottom' = 'right') => {
+              setAddingChildOf(parentId);
+              setAddDirection(direction);
+              setStagedAttachments([]);
+              setNewNodeFontSize('md');
+              setNewNodeImageSize('md');
+              setShowAddNode(true);
+            },
+            onDelete: (id: string) => {
+              requestDeleteNode(id);
+            },
+            onRename: (id: string, title: string) => {
+              updateNode(id, { title });
+            },
+            onExpandImage: async (att: NodeAttachment) => {
+              const fullUrl = await getAttachmentFullData(att);
+              setExpandedImage({
+                name: att.name,
+                url: fullUrl || att.dataUrl || '',
+                size: att.size,
+              });
+            },
+            onOpenFile: (att: NodeAttachment) => {
+              openFileAttachment(att);
+            },
           },
-          onCompleteConnecting: (targetId: string) => {
-            if (connectingFromNodeId) {
-              handleCreateConnection(connectingFromNodeId, targetId);
-            }
-          },
-          onSelect: (id: string) => setSelectedNodeId(id),
-          onAddChild: (parentId: string, direction: 'right' | 'left' | 'top' | 'bottom' = 'right') => {
-            setAddingChildOf(parentId);
-            setAddDirection(direction);
-            setStagedAttachments([]);
-            setNewNodeFontSize('md');
-            setNewNodeImageSize('md');
-            setShowAddNode(true);
-          },
-          onDelete: (id: string) => {
-            requestDeleteNode(id);
-          },
-          onRename: (id: string, title: string) => {
-            updateNode(id, { title });
-          },
-          onExpandImage: async (att: NodeAttachment) => {
-            const fullUrl = await getAttachmentFullData(att);
-            setExpandedImage({
-              name: att.name,
-              url: fullUrl || att.dataUrl || '',
-              size: att.size,
-            });
-          },
-          onOpenFile: (att: NodeAttachment) => {
-            openFileAttachment(att);
-          },
-        },
-        selected: n.id === selectedNodeId,
-      }));
+          selected: n.id === selectedNodeId,
+        };
+      });
     },
-    [selectedNodeId, connectingFromNodeId, handleCreateConnection, requestDeleteNode, updateNode, fontScale]
+    [
+      selectedNodeId,
+      connectingFromNodeId,
+      handleCreateConnection,
+      requestDeleteNode,
+      updateNode,
+      fontScale,
+      storeNodes,
+      collapsedNodeIds,
+      countDescendants,
+      toggleCollapseNode,
+      knowledgeNodes,
+      projectId,
+    ]
   );
 
   // Convert store edges to React Flow edges with dynamically calculated handles and non-overlapping offsets
@@ -484,17 +582,17 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
     [editingEdgeId, updateEdge, deleteEdge, fontScale]
   );
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(toFlowNodes(storeNodes));
-  const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(storeEdges, storeNodes));
+  const [nodes, setNodes, onNodesChange] = useNodesState(toFlowNodes(visibleStoreNodes));
+  const [edges, setEdges, onEdgesChange] = useEdgesState(toFlowEdges(visibleStoreEdges, visibleStoreNodes));
 
   // Sync store → flow nodes
   useEffect(() => {
-    setNodes(toFlowNodes(storeNodes));
-  }, [storeNodes, toFlowNodes, setNodes]);
+    setNodes(toFlowNodes(visibleStoreNodes));
+  }, [visibleStoreNodes, toFlowNodes, setNodes]);
 
   useEffect(() => {
-    setEdges(toFlowEdges(storeEdges, storeNodes));
-  }, [storeEdges, storeNodes, toFlowEdges, setEdges]);
+    setEdges(toFlowEdges(visibleStoreEdges, visibleStoreNodes));
+  }, [visibleStoreEdges, visibleStoreNodes, toFlowEdges, setEdges]);
 
   // Handle node changes (drag and keyboard delete)
   const handleNodesChange = useCallback(
@@ -975,6 +1073,17 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
             className="shadow-sm flex items-center gap-1"
           >
             <Workflow size={11} /> Ordnen
+          </Button>
+
+          {/* Collapse/Expand subtrees button */}
+          <Button
+            variant="secondary"
+            size="sm"
+            onClick={toggleCollapseAll}
+            title={collapsedNodeIds.size > 0 ? 'Alle Äste ausklappen' : 'Alle Unteräste einklappen'}
+            className="shadow-sm flex items-center gap-1"
+          >
+            <ChevronsUpDown size={11} /> {collapsedNodeIds.size > 0 ? 'Ausklappen' : 'Einklappen'}
           </Button>
 
           {/* Connect button if a node is selected */}

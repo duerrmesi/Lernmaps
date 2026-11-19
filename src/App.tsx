@@ -24,6 +24,7 @@ import { AllTimelinesPage } from './features/timelines/AllTimelinesPage';
 import { TimelinesPage } from './features/timelines/TimelinesPage';
 import { TimelinePage } from './features/timelines/TimelinePage';
 import { SettingsPage } from './features/settings/SettingsPage';
+import { GlossaryPage } from './features/glossary/GlossaryPage';
 import { initStorage } from './store';
 
 function App() {
@@ -80,6 +81,7 @@ function App() {
             <Route path="/flashcards" element={<AllFlashcardsPage />} />
             <Route path="/taskcards" element={<AllTaskcardsPage />} />
             <Route path="/notes" element={<AllNotesPage />} />
+            <Route path="/glossary" element={<GlossaryPage />} />
 
             {/* Project-scoped routes */}
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
@@ -91,6 +93,7 @@ function App() {
             <Route path="/projects/:projectId/flashcards" element={<FlashcardsPage />} />
             <Route path="/projects/:projectId/flashcards/learn" element={<LearnMode />} />
             <Route path="/projects/:projectId/taskcards" element={<TaskcardsPage />} />
+            <Route path="/projects/:projectId/glossary" element={<GlossaryPage />} />
 
             {/* Settings */}
             <Route path="/settings" element={<SettingsPage />} />

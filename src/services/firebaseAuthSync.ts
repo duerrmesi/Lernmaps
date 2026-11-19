@@ -1,3 +1,4 @@
+// firebaseAuthSync – Handles Firebase Auth state syncing and cloud persistence
 import { useState, useEffect } from 'react';
 import {
   auth,
@@ -66,6 +67,10 @@ let isInternalLoading = false;
 
 /**
  * Upload current materials to user's private cloud document
+ */
+/**
+ * Upload current materials to user's private cloud document.
+ * Returns true on success, false on failure.
  */
 export async function saveToCloud(): Promise<boolean> {
   const user = auth.currentUser;
