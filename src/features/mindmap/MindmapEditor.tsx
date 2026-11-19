@@ -201,9 +201,6 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [connectingFromNodeId, editingEdgeId]);
 
-  // Knowledge nodes for mastery level indicators
-  const knowledgeNodes = useStore((s) => s.knowledgeNodes);
-
   // Collapsed branches state (Faltbare Teilbäume)
   const [collapsedNodeIds, setCollapsedNodeIds] = useState<Set<string>>(new Set());
 
@@ -271,17 +268,6 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
         const descendantCount = countDescendants(n.id);
         const isCollapsed = collapsedNodeIds.has(n.id);
 
-        // Look up mastery status
-        let masteryStatus: 'NOT_LEARNED' | 'LEARNING' | 'WEAK' | 'KNOWN' | 'MASTERED' | null = null;
-        if (n.knowledgeNodeId && knowledgeNodes[n.knowledgeNodeId]) {
-          masteryStatus = knowledgeNodes[n.knowledgeNodeId].overallStatus;
-        } else {
-          const match = Object.values(knowledgeNodes).find(
-            (kn) => kn.projectId === projectId && kn.title.toLowerCase().trim() === n.title.toLowerCase().trim()
-          );
-          if (match) masteryStatus = match.overallStatus;
-        }
-
         return {
           id: n.id,
           type: 'mindmapNode',
@@ -295,7 +281,6 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
             fontSize: n.fontSize || (n.parentId === null ? 'lg' : 'md'),
             imageSize: n.imageSize || 'md',
             fontScale,
-            masteryStatus,
             hasChildren,
             descendantCount,
             isCollapsed,
@@ -352,8 +337,6 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
       collapsedNodeIds,
       countDescendants,
       toggleCollapseNode,
-      knowledgeNodes,
-      projectId,
     ]
   );
 
