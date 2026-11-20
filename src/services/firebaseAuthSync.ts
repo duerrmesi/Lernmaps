@@ -12,6 +12,7 @@ import {
 } from './firebase';
 import { writeCloudPayload, readCloudPayload } from './cloudPayload';
 import { getSerializableState, importFullState, useStore } from '../store';
+import { syncLocalPdfsToCloud } from './documentCloudSync';
 
 export interface CloudSyncState {
   user: User | null;
@@ -169,6 +170,9 @@ export function initAuthSync(): () => void {
           // If cloud has no data yet, but user has local projects: initial upload to cloud
           await saveToCloud();
         }
+
+        // Sync any local PDFs to cloud in background
+        syncLocalPdfsToCloud().catch(console.warn);
       } catch (err) {
         console.warn('Initial cloud check on login failed:', err);
       }

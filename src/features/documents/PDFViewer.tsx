@@ -11,10 +11,14 @@ import {
   Loader2,
   FileText,
   Check,
+  RefreshCw,
+  FileUp,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { usePDFViewerStore } from '../../store/pdfViewerStore';
-import { getPdfFromStorage, pdfjsLib } from '../../utils/documentStorage';
+import { getPdfFromStorage, savePdfToStorage, pdfjsLib } from '../../utils/documentStorage';
+import { downloadPdfFromCloud, uploadPdfToCloud } from '../../services/documentCloudSync';
+import { auth } from '../../services/firebase';
 import { cn } from '../../utils/cn';
 
 interface PDFViewerProps {
@@ -40,6 +44,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [scale, setScale] = useState<number>(1.2);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [loadingMessage, setLoadingMessage] = useState<string>('PDF wird geladen...');
+  const [isCloudDownloading, setIsCloudDownloading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [pageInput, setPageInput] = useState<string>(String(currentPage));
   const [justLinked, setJustLinked] = useState<boolean>(false);
@@ -47,13 +53,68 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const renderTaskRef = useRef<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const localFileInputRef = useRef<HTMLInputElement>(null);
 
   // Sync page input when currentPage changes
   useEffect(() => {
     setPageInput(String(currentPage));
   }, [currentPage]);
 
-  // Load PDF document from IndexedDB
+  // Load PDF document from IndexedDB or Cloud
+  const loadDocument = useCallback(async () => {
+    if (!documentFile) {
+      setPdfDoc(null);
+      setNumPages(0);
+      setIsLoading(false);
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    setLoadingMessage('PDF wird aus lokalem Speicher geladen...');
+
+    try {
+      let arrayBuffer = await getPdfFromStorage(documentFile.storageKey);
+
+      // If not available locally, attempt to download from Cloud
+      if (!arrayBuffer) {
+        setLoadingMessage('Lade Dokument aus der Cloud...');
+        setIsCloudDownloading(true);
+        try {
+          arrayBuffer = await downloadPdfFromCloud(documentFile.id, documentFile.downloadUrl);
+          if (arrayBuffer) {
+            await savePdfToStorage(documentFile.storageKey, arrayBuffer);
+          }
+        } catch (cloudErr) {
+          console.warn('Could not fetch PDF from cloud:', cloudErr);
+        } finally {
+          setIsCloudDownloading(false);
+        }
+      }
+
+      if (!arrayBuffer) {
+        setError(
+          'Die Datei befindet sich noch nicht auf diesem Gerät und konnte nicht in der Cloud gefunden werden.'
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      setLoadingMessage('Verarbeite Dokument...');
+      const copy = arrayBuffer.slice(0);
+      const loadingTask = pdfjsLib.getDocument({ data: copy });
+      const loadedDoc = await loadingTask.promise;
+
+      setPdfDoc(loadedDoc);
+      setNumPages(loadedDoc.numPages);
+      setIsLoading(false);
+    } catch (err: any) {
+      console.error('Error rendering PDF with pdf.js:', err);
+      setError('Fehler beim Öffnen des Dokuments: ' + (err?.message || 'Ungültiges PDF-Format'));
+      setIsLoading(false);
+    }
+  }, [documentFile]);
+
   useEffect(() => {
     if (!isOpen || !documentFile) {
       setPdfDoc(null);
@@ -62,50 +123,16 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
       return;
     }
 
-    let isMounted = true;
-    setIsLoading(true);
-    setError(null);
-
-    getPdfFromStorage(documentFile.storageKey)
-      .then(async (arrayBuffer) => {
-        if (!isMounted) return;
-        if (!arrayBuffer) {
-          setError('Die Datei konnte nicht aus dem lokalen Speicher geladen werden.');
-          setIsLoading(false);
-          return;
-        }
-
-        try {
-          const copy = arrayBuffer.slice(0);
-          const loadingTask = pdfjsLib.getDocument({ data: copy });
-          const loadedDoc = await loadingTask.promise;
-          if (!isMounted) return;
-          setPdfDoc(loadedDoc);
-          setNumPages(loadedDoc.numPages);
-          setIsLoading(false);
-        } catch (err: any) {
-          if (!isMounted) return;
-          console.error('Error rendering PDF with pdf.js:', err);
-          setError('Fehler beim Öffnen des Dokuments: ' + (err?.message || 'Ungültiges PDF-Format'));
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        console.error('Failed to read PDF:', err);
-        setError('Lokaler Lesefehler.');
-        setIsLoading(false);
-      });
+    loadDocument();
 
     return () => {
-      isMounted = false;
       if (renderTaskRef.current) {
         try {
           renderTaskRef.current.cancel();
         } catch {}
       }
     };
-  }, [isOpen, documentFile]);
+  }, [isOpen, documentFile, loadDocument]);
 
   // Render current page onto canvas with HiDPI support
   const renderPage = useCallback(
@@ -201,8 +228,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
   };
 
   const activeNode = linkingNodeId ? mindmapNodes[linkingNodeId] : null;
-
-  // Split view vs Modal container classes
   const isSplit = viewMode === 'split';
 
   return (
@@ -219,7 +244,10 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
       <div className="flex items-center justify-between px-3 py-2 border-b border-border bg-bg-secondary select-none shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileText size={16} className="text-primary shrink-0" />
-          <span className="text-xs font-semibold text-text-primary truncate max-w-[200px] md:max-w-[280px]" title={documentFile.name}>
+          <span
+            className="text-xs font-semibold text-text-primary truncate max-w-[200px] md:max-w-[280px]"
+            title={documentFile.name}
+          >
             {documentFile.name}
           </span>
           {numPages > 0 && (
@@ -229,7 +257,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
 
         {/* Right Toolbar Actions */}
         <div className="flex items-center gap-1">
-          {/* Link button if a Mindmap node is active for linking */}
           {linkingNodeId && activeNode && (
             <button
               onClick={handleLinkToNode}
@@ -246,7 +273,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
             </button>
           )}
 
-          {/* Toggle View Mode: Split vs Modal */}
           <button
             onClick={toggleViewMode}
             className="p-1.5 rounded hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
@@ -255,7 +281,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
             {isSplit ? <Maximize size={15} /> : <Columns size={15} />}
           </button>
 
-          {/* Close Viewer */}
           <button
             onClick={closeViewer}
             className="p-1.5 rounded hover:bg-bg-tertiary text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
@@ -268,7 +293,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
 
       {/* Sub-Toolbar: Navigation, Zoom & Tools */}
       <div className="flex items-center justify-between px-3 py-1.5 border-b border-border bg-bg-canvas/80 text-xs shrink-0 select-none">
-        {/* Page Nav */}
         <div className="flex items-center gap-1.5">
           <button
             onClick={handlePrevPage}
@@ -301,7 +325,6 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
           </button>
         </div>
 
-        {/* Zoom Controls */}
         <div className="flex items-center gap-1">
           <button
             onClick={handleZoomOut}
@@ -340,20 +363,66 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
         {isLoading && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-bg-primary/80 z-10 backdrop-blur-xs">
             <Loader2 size={24} className="animate-spin text-primary" />
-            <span className="text-xs text-text-secondary">PDF wird geladen...</span>
+            <span className="text-xs text-text-secondary font-medium">{loadingMessage}</span>
           </div>
         )}
 
         {error && (
-          <div className="flex flex-col items-center justify-center p-6 text-center max-w-sm mt-12 bg-bg-secondary border border-border rounded-lg shadow-sm">
-            <FileText size={32} className="text-rose-500 mb-2 opacity-70" />
-            <p className="text-xs text-rose-400 font-medium mb-1">{error}</p>
-            <p className="text-[11px] text-text-disabled mb-3">
-              Bitte überprüfe, ob die PDF-Datei vollständig hochgeladen wurde.
+          <div className="flex flex-col items-center justify-center p-6 text-center max-w-md mt-8 bg-bg-secondary border border-border rounded-xl shadow-md">
+            <div className="p-3 rounded-full bg-rose-500/10 text-rose-500 mb-3">
+              <FileText size={32} />
+            </div>
+            <h3 className="text-sm font-semibold text-text-primary mb-1">
+              Dokument noch nicht auf diesem Gerät
+            </h3>
+            <p className="text-xs text-text-secondary mb-4 leading-relaxed">
+              Die Datei <strong>{documentFile.name}</strong> wurde auf einem anderen Gerät (z. B. iPad) hinzugefügt, aber die Binärdaten sind noch nicht auf diesem Gerät gespeichert.
             </p>
+
+            <div className="flex flex-col sm:flex-row items-center gap-2 w-full justify-center">
+              <button
+                onClick={loadDocument}
+                disabled={isCloudDownloading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary text-white text-xs font-medium hover:bg-primary/90 transition-colors cursor-pointer w-full sm:w-auto justify-center"
+              >
+                <RefreshCw size={13} className={isCloudDownloading ? 'animate-spin' : ''} />
+                <span>{isCloudDownloading ? 'Lade aus Cloud...' : 'Aus Cloud laden'}</span>
+              </button>
+
+              <button
+                onClick={() => localFileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border bg-bg-tertiary hover:bg-bg-hover text-text-primary text-xs font-medium transition-colors cursor-pointer w-full sm:w-auto justify-center"
+              >
+                <FileUp size={13} />
+                <span>PDF lokal auswählen</span>
+              </button>
+            </div>
+
+            <input
+              ref={localFileInputRef}
+              type="file"
+              accept=".pdf,application/pdf"
+              className="hidden"
+              onChange={async (e) => {
+                if (e.target.files?.[0]) {
+                  const file = e.target.files[0];
+                  const buf = await file.arrayBuffer();
+                  await savePdfToStorage(documentFile.storageKey, buf);
+                  if (auth.currentUser) {
+                    uploadPdfToCloud(documentFile.id, buf).catch(console.warn);
+                  }
+                  loadDocument();
+                }
+              }}
+            />
+
+            <p className="text-[11px] text-text-disabled mt-3">
+              Tipp: Öffne LearnMap auf dem iPad, damit die Datei automatisch in die Cloud übertragen wird.
+            </p>
+
             <button
               onClick={closeViewer}
-              className="px-3 py-1 rounded bg-bg-tertiary hover:bg-bg-hover text-xs text-text-primary border border-border cursor-pointer"
+              className="mt-3 text-[11px] text-text-disabled hover:text-text-secondary cursor-pointer"
             >
               Schließen
             </button>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useMemo } from 'react';
+import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import {
   Folder,
@@ -24,6 +24,8 @@ import { Input } from '../../components/Input';
 import { formatFileSize } from '../../utils/attachmentStorage';
 import { formatDate, generateId } from '../../utils';
 import { savePdfToStorage, getPdfPageCount } from '../../utils/documentStorage';
+import { uploadPdfToCloud, syncLocalPdfsToCloud } from '../../services/documentCloudSync';
+import { auth } from '../../services/firebase';
 import type { DocumentFile, DocumentFolder, ID } from '../../types';
 import { cn } from '../../utils/cn';
 
@@ -68,6 +70,13 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
 
   const [movingDoc, setMovingDoc] = useState<DocumentFile | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('root');
+
+  // Automatically sync any local PDFs to the cloud if logged in
+  useEffect(() => {
+    if (auth.currentUser) {
+      syncLocalPdfsToCloud().catch(console.warn);
+    }
+  }, []);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -147,7 +156,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
         const pageCount = await getPdfPageCount(arrayBuffer);
 
         // Save metadata to store
-        addDocument(
+        const newDoc = addDocument(
           currentProjectId,
           file.name,
           file.size,
@@ -155,6 +164,17 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
           pageCount,
           currentFolderId
         );
+
+        // Upload PDF to cloud if logged in
+        if (auth.currentUser) {
+          uploadPdfToCloud(newDoc.id, arrayBuffer)
+            .then((res) => {
+              if (res.downloadUrl) {
+                updateDocument(newDoc.id, { downloadUrl: res.downloadUrl });
+              }
+            })
+            .catch((err) => console.warn('Cloud upload failed:', err));
+        }
       }
     } catch (err) {
       console.error('Fehler beim Upload:', err);
