@@ -1,4 +1,5 @@
-import { auth } from './firebase';
+import { auth, db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
 import { writeCloudPayload, readCloudPayload } from './cloudPayload';
 import { getPdfFromStorage } from '../utils/documentStorage';
 import { useStore } from '../store';
@@ -87,7 +88,7 @@ export async function downloadPdfFromCloud(
   try {
     const res = await withTimeout(
       readCloudPayload<{ base64Data: string }>(`users/${user.uid}/pdfs`, docId),
-      7000,
+      25000,
       'Download-Zeitüberschreitung'
     );
 
@@ -112,24 +113,25 @@ export async function syncLocalPdfsToCloud(): Promise<number> {
   const docList = Object.values(documents || {});
   let syncedCount = 0;
 
-  for (const doc of docList) {
+  for (const docItem of docList) {
     try {
-      const localData = await getPdfFromStorage(doc.storageKey);
+      const localData = await getPdfFromStorage(docItem.storageKey);
       if (!localData) continue;
 
-      // Check if already in cloud with a quick read
-      const existing = await withTimeout(
-        readCloudPayload(`users/${user.uid}/pdfs`, doc.id),
-        3000,
+      // Fast check if already in cloud
+      const docRef = doc(db, `users/${user.uid}/pdfs`, docItem.id);
+      const docSnap = await withTimeout(
+        getDoc(docRef),
+        4000,
         'Check-Timeout'
       ).catch(() => null);
 
-      if (!existing?.data) {
-        await uploadPdfToCloud(doc.id, localData);
+      if (!docSnap || !docSnap.exists()) {
+        await uploadPdfToCloud(docItem.id, localData);
         syncedCount++;
       }
     } catch (err) {
-      console.warn(`Sync for document ${doc.name} skipped:`, err);
+      console.warn(`Sync for document ${docItem.name} skipped:`, err);
     }
   }
 
