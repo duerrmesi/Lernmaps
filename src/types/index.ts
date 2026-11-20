@@ -39,6 +39,14 @@ export interface NodeAttachment {
   dataUrl?: string; // thumbnail or base64 preview
 }
 
+export interface PdfPageLink {
+  id: string;
+  documentId: ID;
+  pageNumber: number;
+  documentName?: string;
+  label?: string;
+}
+
 export type NodeFontSize = 'sm' | 'md' | 'lg' | 'xl';
 export type NodeImageSize = 'sm' | 'md' | 'lg' | 'xl';
 
@@ -54,6 +62,7 @@ export interface MindmapNode {
   linkedFlashcardIds: ID[];
   linkedTaskcardIds: ID[];
   linkedNoteIds: ID[];
+  linkedPdfPages?: PdfPageLink[];
   attachments?: NodeAttachment[];
   fontSize?: NodeFontSize;
   imageSize?: NodeImageSize;
@@ -307,6 +316,30 @@ export interface GlossaryTerm {
   updatedAt: string;
 }
 
+// ─── Documents & Folders ──────────────────────────────────────────────────────
+
+export interface DocumentFolder {
+  id: ID;
+  projectId: ID;
+  name: string;
+  parentId: ID | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface DocumentFile {
+  id: ID;
+  projectId: ID;
+  folderId: ID | null;
+  name: string;
+  size: number;
+  pageCount?: number;
+  storageKey: string;
+  downloadUrl?: string; // If uploaded to Firebase Storage
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── App State ────────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -327,6 +360,8 @@ export interface AppState {
   timelines: Record<ID, Timeline>;
   timelineEvents: Record<ID, TimelineEvent>;
   glossaryTerms?: Record<ID, GlossaryTerm>;
+  folders?: Record<ID, DocumentFolder>;
+  documents?: Record<ID, DocumentFile>;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -343,7 +378,9 @@ export type SearchResultType =
   | 'exam'
   | 'timeline'
   | 'timelineEvent'
-  | 'glossary';
+  | 'glossary'
+  | 'document'
+  | 'folder';
 
 export interface SearchResult {
   id: ID;

@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Network, CreditCard, StickyNote, Layers, FolderOpen, Milestone } from 'lucide-react';
+import { Search, Network, CreditCard, StickyNote, Layers, FolderOpen, Milestone, FileText, Folder } from 'lucide-react';
 import { useSearchStore } from './searchStore';
 import { useStore } from '../../store';
+import { usePDFViewerStore } from '../../store/pdfViewerStore';
 import { fuzzyMatch, truncate } from '../../utils';
 import type { SearchResult } from '../../types';
 import { cn } from '../../utils/cn';
@@ -16,6 +17,8 @@ const TYPE_LABELS: Record<string, string> = {
   taskcard: 'Taskcard',
   timeline: 'Zeitstrahl',
   timelineEvent: 'Ereignis',
+  document: 'PDF-Dokument',
+  folder: 'Ordner',
 };
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -27,6 +30,8 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   taskcard: Layers,
   timeline: Milestone,
   timelineEvent: Milestone,
+  document: FileText,
+  folder: Folder,
 };
 
 function useSearchResults(query: string): SearchResult[] {
@@ -99,6 +104,32 @@ function useSearchResults(query: string): SearchResult[] {
     }
   });
 
+  Object.values(store.documents || {}).forEach((d) => {
+    if (fuzzyMatch(d.name, q)) {
+      const project = store.projects[d.projectId];
+      results.push({
+        id: d.id,
+        type: 'document',
+        title: d.name,
+        subtitle: `${d.pageCount ? `${d.pageCount} Seiten • ` : ''}${project?.title || ''}`,
+        projectId: d.projectId,
+      });
+    }
+  });
+
+  Object.values(store.folders || {}).forEach((f) => {
+    if (fuzzyMatch(f.name, q)) {
+      const project = store.projects[f.projectId];
+      results.push({
+        id: f.id,
+        type: 'folder',
+        title: f.name,
+        subtitle: `Ordner in ${project?.title || ''}`,
+        projectId: f.projectId,
+      });
+    }
+  });
+
   return results.slice(0, 20);
 }
 
@@ -141,6 +172,12 @@ export const SearchModal: React.FC = () => {
       case 'taskcard': navigate(`/projects/${result.projectId}/taskcards`); break;
       case 'timeline': navigate(`/projects/${result.projectId}/timelines/${result.id}`); break;
       case 'timelineEvent': navigate(`/projects/${result.projectId}/timelines/${result.id}`); break;
+      case 'document':
+        usePDFViewerStore.getState().openViewer(result.id, 1);
+        break;
+      case 'folder':
+        navigate(`/projects/${result.projectId}/documents`);
+        break;
     }
   }, [close, navigate]);
 

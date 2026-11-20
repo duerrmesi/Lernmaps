@@ -11,6 +11,7 @@ import {
   formatFileSize,
   openFileAttachment,
 } from '../../utils/attachmentStorage';
+import { usePDFViewerStore } from '../../store/pdfViewerStore';
 
 interface NodeDetailPanelProps {
   node: MindmapNode;
@@ -37,14 +38,19 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
     notes,
     flashcards,
     taskcards,
+    documents = {},
     linkNoteToNode,
     unlinkNoteFromNode,
     linkFlashcardToNode,
     unlinkFlashcardFromNode,
     linkTaskcardToNode,
     unlinkTaskcardFromNode,
+    linkPdfPageToNode,
+    unlinkPdfPageFromNode,
     createFlashcard,
   } = useStore();
+
+  const { openViewer, setLinkingNodeId } = usePDFViewerStore();
 
   const [content, setContent] = useState(node.content);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
@@ -53,6 +59,9 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   const [showLinkNote, setShowLinkNote] = useState(false);
   const [showLinkFlashcard, setShowLinkFlashcard] = useState(false);
   const [showLinkTaskcard, setShowLinkTaskcard] = useState(false);
+  const [showLinkPdf, setShowLinkPdf] = useState(false);
+  const [selectedDocId, setSelectedDocId] = useState('');
+  const [pdfPageInput, setPdfPageInput] = useState('1');
   const [showNewFlashcard, setShowNewFlashcard] = useState(false);
   const [fcFront, setFcFront] = useState('');
   const [fcBack, setFcBack] = useState('');
@@ -94,10 +103,17 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
   const projectNotes = Object.values(notes).filter((n) => n.projectId === projectId);
   const projectFlashcards = Object.values(flashcards).filter((f) => f.projectId === projectId);
   const projectTaskcards = Object.values(taskcards).filter((t) => t.projectId === projectId);
+  const projectDocuments = Object.values(documents).filter((d) => d.projectId === projectId);
 
   const linkedNotes = node.linkedNoteIds.map((id) => notes[id]).filter(Boolean);
   const linkedFlashcards = node.linkedFlashcardIds.map((id) => flashcards[id]).filter(Boolean);
   const linkedTaskcards = node.linkedTaskcardIds.map((id) => taskcards[id]).filter(Boolean);
+  const linkedPdfPages = node.linkedPdfPages || [];
+
+  useEffect(() => {
+    setLinkingNodeId(node.id);
+    return () => setLinkingNodeId(null);
+  }, [node.id, setLinkingNodeId]);
 
   const attachments = node.attachments || [];
 
@@ -514,6 +530,62 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
             ))
           )}
         </Section>
+
+        {/* Linked PDF Pages */}
+        <Section
+          title="PDF-Seiten & Skripte"
+          count={linkedPdfPages.length}
+          action={
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  if (projectDocuments.length > 0) {
+                    setSelectedDocId(projectDocuments[0].id);
+                    setPdfPageInput('1');
+                    setShowLinkPdf(true);
+                  } else {
+                    alert('Lade zuerst eine PDF in dieses Projekt hoch.');
+                  }
+                }}
+                className="text-[11px] text-accent hover:underline flex items-center gap-0.5 cursor-pointer"
+              >
+                <Link size={10} strokeWidth={2.5} /> Verknüpfen
+              </button>
+            </div>
+          }
+        >
+          {linkedPdfPages.length === 0 ? (
+            <p className="text-[11.5px] text-text-disabled">–</p>
+          ) : (
+            linkedPdfPages.map((link) => {
+              const doc = documents[link.documentId];
+              return (
+                <div key={link.id} className="flex items-center justify-between py-1 group">
+                  <button
+                    className="text-[12px] text-accent hover:underline truncate flex items-center gap-1.5 cursor-pointer text-left"
+                    onClick={() => openViewer(link.documentId, link.pageNumber)}
+                    title="Im PDF-Viewer an dieser Seite öffnen"
+                  >
+                    <FileText size={12} className="shrink-0 text-rose-500" />
+                    <span className="truncate max-w-[150px]">
+                      {link.documentName || doc?.name || 'PDF'}
+                    </span>
+                    <span className="text-[10px] px-1 py-0.2 rounded bg-rose-500/15 text-rose-600 dark:text-rose-400 font-semibold shrink-0">
+                      S. {link.pageNumber}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => unlinkPdfPageFromNode(node.id, link.documentId, link.pageNumber)}
+                    className="opacity-100 sm:opacity-0 group-hover:opacity-100 text-text-disabled hover:text-danger transition-all p-1 cursor-pointer"
+                    title="Verknüpfung aufheben"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </Section>
       </div>
 
       {/* Footer action: Delete node */}
@@ -651,6 +723,89 @@ export const NodeDetailPanel: React.FC<NodeDetailPanelProps> = ({
           <div className="flex justify-end gap-1.5 pt-1">
             <Button variant="secondary" onClick={() => setShowNewFlashcard(false)}>Abbrechen</Button>
             <Button variant="primary" onClick={handleCreateFlashcard} disabled={!fcFront.trim()}>Erstellen</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Link PDF Page Modal */}
+      <Modal isOpen={showLinkPdf} onClose={() => setShowLinkPdf(false)} title="PDF-Seite verknüpfen" size="sm">
+        <div className="space-y-4">
+          <div>
+            <label className="text-[10.5px] font-semibold uppercase tracking-wider text-text-secondary block mb-1">
+              Dokument auswählen
+            </label>
+            <select
+              value={selectedDocId}
+              onChange={(e) => {
+                setSelectedDocId(e.target.value);
+                setPdfPageInput('1');
+              }}
+              className="w-full px-2.5 py-1.5 text-xs rounded border border-border bg-bg-secondary text-text-primary focus:outline-hidden focus:border-primary"
+            >
+              {projectDocuments.map((d) => (
+                <option key={d.id} value={d.id}>
+                  📄 {d.name} {d.pageCount ? `(${d.pageCount} Seiten)` : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="text-[10.5px] font-semibold uppercase tracking-wider text-text-secondary block mb-1">
+              Seitenzahl
+            </label>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min="1"
+                max={documents[selectedDocId]?.pageCount || 9999}
+                value={pdfPageInput}
+                onChange={(e) => setPdfPageInput(e.target.value)}
+                className="w-24 px-2.5 py-1.5 text-xs rounded border border-border bg-bg-secondary text-text-primary focus:outline-hidden focus:border-primary"
+              />
+              {documents[selectedDocId]?.pageCount && (
+                <span className="text-xs text-text-disabled">
+                  von {documents[selectedDocId].pageCount} Seiten
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setShowLinkPdf(false);
+                if (selectedDocId) {
+                  openViewer(selectedDocId, parseInt(pdfPageInput, 10) || 1, {
+                    nodeId: node.id,
+                  });
+                }
+              }}
+              className="text-[11px]"
+            >
+              Im Viewer durchsuchen
+            </Button>
+            <div className="flex gap-1.5">
+              <Button variant="secondary" size="sm" onClick={() => setShowLinkPdf(false)}>
+                Abbrechen
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => {
+                  const page = parseInt(pdfPageInput, 10);
+                  if (selectedDocId && !isNaN(page) && page >= 1) {
+                    linkPdfPageToNode(node.id, selectedDocId, page);
+                    setShowLinkPdf(false);
+                  }
+                }}
+                disabled={!selectedDocId}
+              >
+                Verknüpfen
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>

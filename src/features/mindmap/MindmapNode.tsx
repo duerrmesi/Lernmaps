@@ -24,6 +24,8 @@ interface MindmapNodeData {
   onRename: (id: string, title: string) => void;
   onExpandImage?: (attachment: NodeAttachment) => void;
   onOpenFile?: (attachment: NodeAttachment) => void;
+  linkedPdfPages?: import('../../types').PdfPageLink[];
+  onOpenPdfPage?: (documentId: string, pageNumber: number) => void;
   isConnectingSource?: boolean;
   isConnectingCandidate?: boolean;
   onStartConnecting?: (nodeId: string) => void;
@@ -386,6 +388,29 @@ export const MindmapNodeComponent = memo(({ data, selected }: NodeProps) => {
                 {file.name}
               </span>
               <span className="text-[9px] text-text-disabled shrink-0">{formatFileSize(file.size)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Linked PDF Pages */}
+      {d.linkedPdfPages && d.linkedPdfPages.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {d.linkedPdfPages.map((link) => (
+            <div
+              key={link.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                d.onOpenPdfPage?.(link.documentId, link.pageNumber);
+              }}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 border border-rose-500/25 text-[10px] font-medium transition-colors cursor-pointer"
+              title={`${link.documentName || 'Dokument'} (Seite ${link.pageNumber})`}
+            >
+              <FileText size={10} className="shrink-0" />
+              <span className="truncate max-w-[110px]">{link.documentName || 'PDF'}</span>
+              <span className="bg-rose-500/20 px-1 rounded text-[9px] font-bold">
+                S.{link.pageNumber}
+              </span>
             </div>
           ))}
         </div>

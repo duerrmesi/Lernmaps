@@ -25,6 +25,9 @@ import { TimelinesPage } from './features/timelines/TimelinesPage';
 import { TimelinePage } from './features/timelines/TimelinePage';
 import { SettingsPage } from './features/settings/SettingsPage';
 import { GlossaryPage } from './features/glossary/GlossaryPage';
+import { DocumentsPage } from './features/documents/DocumentsPage';
+import { AllDocumentsPage } from './features/documents/AllDocumentsPage';
+import { PDFViewer } from './features/documents/PDFViewer';
 import { initStorage } from './store';
 
 function App() {
@@ -81,10 +84,12 @@ function App() {
             <Route path="/flashcards" element={<AllFlashcardsPage />} />
             <Route path="/taskcards" element={<AllTaskcardsPage />} />
             <Route path="/notes" element={<AllNotesPage />} />
+            <Route path="/documents" element={<AllDocumentsPage />} />
             <Route path="/glossary" element={<GlossaryPage />} />
 
             {/* Project-scoped routes */}
             <Route path="/projects/:projectId" element={<ProjectDetail />} />
+            <Route path="/projects/:projectId/documents" element={<DocumentsPage />} />
             <Route path="/projects/:projectId/mindmaps/:mindmapId" element={<MindmapPage />} />
             <Route path="/projects/:projectId/timelines" element={<TimelinesPage />} />
             <Route path="/projects/:projectId/timelines/:timelineId" element={<TimelinePage />} />
@@ -103,7 +108,8 @@ function App() {
           </Routes>
         </main>
 
-        {/* Global modals */}
+        {/* Global modals & overlays */}
+        <PDFViewer />
         <SearchModal />
         <ImportModal />
         <DeviceTransferModal />

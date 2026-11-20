@@ -17,6 +17,7 @@ import {
   Cloud,
   PanelLeftClose,
   BookMarked,
+  FileText,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useSearchStore } from '../features/search/searchStore';
@@ -198,6 +199,7 @@ export const Sidebar: React.FC = () => {
             <NavItem to="/flashcards" icon={CreditCard} label="Karteikarten" onClick={handleNavClick} />
             <NavItem to="/notes"      icon={StickyNote} label="Notizen" onClick={handleNavClick} />
             <NavItem to="/taskcards"  icon={Layers}     label="Taskcards" onClick={handleNavClick} />
+            <NavItem to="/documents"  icon={FileText}   label="Dokumente & PDFs" onClick={handleNavClick} />
             <NavItem to="/glossary"   icon={BookMarked} label="Glossar" onClick={handleNavClick} />
           </div>
         </nav>

@@ -31,8 +31,12 @@ import type {
   FlashcardType,
   OcclusionBox,
   GlossaryTerm,
+  DocumentFolder,
+  DocumentFile,
+  PdfPageLink,
 } from '../types';
 import { generateId, now } from '../utils';
+import { deletePdfFromStorage } from '../utils/documentStorage';
 
 interface Actions {
   // Projects
@@ -161,6 +165,30 @@ interface Actions {
     updates: Partial<Omit<TimelineEvent, 'id' | 'timelineId' | 'projectId' | 'createdAt'>>
   ) => void;
   deleteTimelineEvent: (id: ID) => void;
+
+  // Documents & Folders
+  createFolder: (projectId: ID, name: string, parentId?: ID | null) => DocumentFolder;
+  updateFolder: (id: ID, updates: Partial<Pick<DocumentFolder, 'name' | 'parentId'>>) => void;
+  deleteFolder: (id: ID) => void;
+
+  addDocument: (
+    projectId: ID,
+    name: string,
+    size: number,
+    storageKey: string,
+    pageCount?: number,
+    folderId?: ID | null,
+    downloadUrl?: string
+  ) => DocumentFile;
+  updateDocument: (
+    id: ID,
+    updates: Partial<Pick<DocumentFile, 'name' | 'folderId' | 'pageCount' | 'downloadUrl'>>
+  ) => void;
+  deleteDocument: (id: ID) => void;
+
+  // Node PDF Page Linking
+  linkPdfPageToNode: (nodeId: ID, documentId: ID, pageNumber: number, label?: string) => void;
+  unlinkPdfPageFromNode: (nodeId: ID, documentId: ID, pageNumber: number) => void;
 }
 
 type StoreState = AppState & Actions;
@@ -186,6 +214,8 @@ export const useStore = create<StoreState>()(
       timelines: {},
       timelineEvents: {},
       glossaryTerms: {},
+      folders: {},
+      documents: {},
 
       // ─── Projects ──────────────────────────────────────────────────────
       createProject: (title, description = '') => {
@@ -259,11 +289,21 @@ export const useStore = create<StoreState>()(
           const timelineEvents = Object.fromEntries(
             Object.entries(s.timelineEvents || {}).filter(([, te]) => te.projectId !== id)
           );
+          const folders = Object.fromEntries(
+            Object.entries(s.folders || {}).filter(([, f]) => f.projectId !== id)
+          );
+          const docsToDelete = Object.values(s.documents || {}).filter((d) => d.projectId === id);
+          docsToDelete.forEach((d) => {
+            if (d.storageKey) deletePdfFromStorage(d.storageKey).catch(console.error);
+          });
+          const documents = Object.fromEntries(
+            Object.entries(s.documents || {}).filter(([, d]) => d.projectId !== id)
+          );
 
           return { 
             projects, mindmaps, mindmapNodes, mindmapEdges, notes, flashcards, taskcards,
             knowledgeNodes, learningEvents, questions, mistakes, exams, examResults,
-            timelines, timelineEvents
+            timelines, timelineEvents, folders, documents
           };
         });
       },
@@ -1447,6 +1487,174 @@ export const useStore = create<StoreState>()(
           };
         });
       },
+
+      // ─── Documents & Folders ───────────────────────────────────────────
+      createFolder: (projectId, name, parentId = null) => {
+        const folder: DocumentFolder = {
+          id: generateId(),
+          projectId,
+          name: name.trim(),
+          parentId: parentId || null,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          folders: {
+            ...(s.folders || {}),
+            [folder.id]: folder,
+          },
+        }));
+        return folder;
+      },
+
+      updateFolder: (id, updates) => {
+        set((s) => {
+          const current = s.folders?.[id];
+          if (!current) return s;
+          return {
+            folders: {
+              ...(s.folders || {}),
+              [id]: { ...current, ...updates, updatedAt: now() },
+            },
+          };
+        });
+      },
+
+      deleteFolder: (id) => {
+        set((s) => {
+          const folders = { ...(s.folders || {}) };
+          delete folders[id];
+          // Documents inside this folder get moved to root
+          const documents = { ...(s.documents || {}) };
+          Object.values(documents).forEach((doc) => {
+            if (doc.folderId === id) {
+              documents[doc.id] = { ...doc, folderId: null, updatedAt: now() };
+            }
+          });
+          // Child folders get moved to root
+          Object.values(folders).forEach((f) => {
+            if (f.parentId === id) {
+              folders[f.id] = { ...f, parentId: null, updatedAt: now() };
+            }
+          });
+          return { folders, documents };
+        });
+      },
+
+      addDocument: (projectId, name, size, storageKey, pageCount = 1, folderId = null, downloadUrl) => {
+        const doc: DocumentFile = {
+          id: generateId(),
+          projectId,
+          name: name.trim(),
+          size,
+          storageKey,
+          pageCount,
+          folderId: folderId || null,
+          downloadUrl,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          documents: {
+            ...(s.documents || {}),
+            [doc.id]: doc,
+          },
+        }));
+        return doc;
+      },
+
+      updateDocument: (id, updates) => {
+        set((s) => {
+          const current = s.documents?.[id];
+          if (!current) return s;
+          return {
+            documents: {
+              ...(s.documents || {}),
+              [id]: { ...current, ...updates, updatedAt: now() },
+            },
+          };
+        });
+      },
+
+      deleteDocument: (id) => {
+        const doc = _get().documents?.[id];
+        if (doc?.storageKey) {
+          deletePdfFromStorage(doc.storageKey).catch(console.error);
+        }
+        set((s) => {
+          const documents = { ...(s.documents || {}) };
+          delete documents[id];
+          // Remove linked PDF pages from all nodes that refer to this document
+          const mindmapNodes = { ...s.mindmapNodes };
+          let changedNodes = false;
+          Object.values(mindmapNodes).forEach((node) => {
+            if (node.linkedPdfPages?.some((l) => l.documentId === id)) {
+              mindmapNodes[node.id] = {
+                ...node,
+                linkedPdfPages: node.linkedPdfPages.filter((l) => l.documentId !== id),
+                updatedAt: now(),
+              };
+              changedNodes = true;
+            }
+          });
+          return {
+            documents,
+            ...(changedNodes ? { mindmapNodes } : {}),
+          };
+        });
+      },
+
+      linkPdfPageToNode: (nodeId, documentId, pageNumber, label) => {
+        set((s) => {
+          const node = s.mindmapNodes[nodeId];
+          const doc = s.documents?.[documentId];
+          if (!node || !doc) return s;
+
+          const existingLinks = node.linkedPdfPages || [];
+          if (existingLinks.some((l) => l.documentId === documentId && l.pageNumber === pageNumber)) {
+            return s;
+          }
+
+          const newLink: PdfPageLink = {
+            id: generateId(),
+            documentId,
+            pageNumber,
+            documentName: doc.name,
+            label,
+          };
+
+          return {
+            mindmapNodes: {
+              ...s.mindmapNodes,
+              [nodeId]: {
+                ...node,
+                linkedPdfPages: [...existingLinks, newLink],
+                updatedAt: now(),
+              },
+            },
+          };
+        });
+      },
+
+      unlinkPdfPageFromNode: (nodeId, documentId, pageNumber) => {
+        set((s) => {
+          const node = s.mindmapNodes[nodeId];
+          if (!node || !node.linkedPdfPages) return s;
+
+          return {
+            mindmapNodes: {
+              ...s.mindmapNodes,
+              [nodeId]: {
+                ...node,
+                linkedPdfPages: node.linkedPdfPages.filter(
+                  (l) => !(l.documentId === documentId && l.pageNumber === pageNumber)
+                ),
+                updatedAt: now(),
+              },
+            },
+          };
+        });
+      },
     }),
     {
       name: 'learnmap-storage',
@@ -1477,6 +1685,8 @@ export function getSerializableState(): AppState {
     examResults: s.examResults || {},
     timelines: s.timelines || {},
     timelineEvents: s.timelineEvents || {},
+    folders: s.folders || {},
+    documents: s.documents || {},
   };
 }
 
@@ -1517,6 +1727,8 @@ export function importFullState(payload: any, persistToDisk = true): boolean {
         examResults: safeArr(rawState.examResults, current.examResults),
         timelines: safeObj(rawState.timelines, current.timelines ?? {}),
         timelineEvents: safeObj(rawState.timelineEvents, current.timelineEvents ?? {}),
+        folders: safeObj(rawState.folders, current.folders ?? {}),
+        documents: safeObj(rawState.documents, current.documents ?? {}),
       }));
     } finally {
       setSyncPaused(false);

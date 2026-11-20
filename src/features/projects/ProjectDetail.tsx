@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Plus, Network, CreditCard, StickyNote, Layers, Milestone, Trash2, Edit2, ChevronRight, BookMarked } from 'lucide-react';
+import { Plus, Network, CreditCard, StickyNote, Layers, Milestone, Trash2, Edit2, ChevronRight, BookMarked, FolderOpen } from 'lucide-react';
 import { useStore } from '../../store';
 import { Button } from '../../components/Button';
 import { Modal } from '../../components/Modal';
@@ -10,7 +10,20 @@ import { formatDate } from '../../utils';
 export const ProjectDetail: React.FC = () => {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const { projects, mindmaps, notes, flashcards, taskcards, timelines, createMindmap, createTimeline, deleteProject, updateProject } = useStore();
+  const {
+    projects,
+    mindmaps,
+    notes,
+    flashcards,
+    taskcards,
+    timelines,
+    documents = {},
+    folders = {},
+    createMindmap,
+    createTimeline,
+    deleteProject,
+    updateProject,
+  } = useStore();
 
   const project = projectId ? projects[projectId] : null;
   const projectMindmaps = Object.values(mindmaps).filter(m => m.projectId === projectId);
@@ -18,6 +31,8 @@ export const ProjectDetail: React.FC = () => {
   const projectNotes = Object.values(notes).filter(n => n.projectId === projectId);
   const projectFlashcards = Object.values(flashcards).filter(f => f.projectId === projectId);
   const projectTaskcards = Object.values(taskcards).filter(t => t.projectId === projectId);
+  const projectDocs = Object.values(documents).filter(d => d.projectId === projectId);
+  const projectFolders = Object.values(folders).filter(f => f.projectId === projectId);
 
   const [showNewMindmap, setShowNewMindmap] = useState(false);
   const [newMindmapTitle, setNewMindmapTitle] = useState('');
@@ -134,6 +149,39 @@ export const ProjectDetail: React.FC = () => {
                 onClick={() => navigate(`/projects/${projectId}/timelines/${t.id}`)}
               />
             ))
+          )}
+        </Section>
+
+        {/* Documents & Folders */}
+        <Section
+          icon={<FolderOpen size={13} strokeWidth={1.8} />}
+          title="Dokumente & Ordner"
+          count={projectDocs.length + projectFolders.length}
+          action={
+            <Button variant="secondary" size="sm" onClick={() => navigate(`/projects/${projectId}/documents`)}>
+              Öffnen
+            </Button>
+          }
+        >
+          {projectDocs.length === 0 ? (
+            <p className="text-[12px] text-text-disabled py-2">Noch keine PDFs hochgeladen</p>
+          ) : (
+            projectDocs.slice(0, 4).map(d => (
+              <SectionRow
+                key={d.id}
+                title={d.name}
+                meta={`${d.pageCount ? `${d.pageCount} Seiten • ` : ''}${formatDate(d.updatedAt)}`}
+                onClick={() => navigate(`/projects/${projectId}/documents`)}
+              />
+            ))
+          )}
+          {projectDocs.length > 4 && (
+            <button
+              onClick={() => navigate(`/projects/${projectId}/documents`)}
+              className="text-[11.5px] text-accent hover:underline mt-1 block"
+            >
+              Alle {projectDocs.length} Dokumente anzeigen
+            </button>
           )}
         </Section>
 

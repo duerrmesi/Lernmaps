@@ -50,6 +50,7 @@ import {
   getAttachmentFullData,
   openFileAttachment,
 } from '../../utils/attachmentStorage';
+import { usePDFViewerStore } from '../../store/pdfViewerStore';
 
 const nodeTypes = {
   mindmapNode: MindmapNodeComponent,
@@ -102,6 +103,7 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
   };
 
   const [rfInstance, setRfInstance] = useState<ReactFlowInstance | null>(null);
+  const { openViewer } = usePDFViewerStore();
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [editingEdgeId, setEditingEdgeId] = useState<string | null>(null);
   const [connectingFromNodeId, setConnectingFromNodeId] = useState<string | null>(null);
@@ -278,6 +280,8 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
             isRoot: n.parentId === null,
             isSelected: n.id === selectedNodeId,
             attachments: n.attachments || [],
+            linkedPdfPages: n.linkedPdfPages || [],
+            onOpenPdfPage: (docId: string, page: number) => openViewer(docId, page),
             fontSize: n.fontSize || (n.parentId === null ? 'lg' : 'md'),
             imageSize: n.imageSize || 'md',
             fontScale,
@@ -337,6 +341,7 @@ export const MindmapEditor: React.FC<MindmapEditorProps> = ({ mindmapId, project
       collapsedNodeIds,
       countDescendants,
       toggleCollapseNode,
+      openViewer,
     ]
   );
 
