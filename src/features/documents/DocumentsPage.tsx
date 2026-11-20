@@ -15,6 +15,7 @@ import {
   Eye,
   FileUp,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { usePDFViewerStore } from '../../store/pdfViewerStore';
@@ -58,6 +59,7 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
   const [currentFolderId, setCurrentFolderId] = useState<ID | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   // Modals
@@ -168,11 +170,6 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
         // Upload PDF to cloud if logged in
         if (auth.currentUser) {
           uploadPdfToCloud(newDoc.id, arrayBuffer)
-            .then((res) => {
-              if (res.downloadUrl) {
-                updateDocument(newDoc.id, { downloadUrl: res.downloadUrl });
-              }
-            })
             .catch((err) => console.warn('Cloud upload failed:', err));
         }
       }
@@ -308,6 +305,37 @@ export const DocumentsPage: React.FC<DocumentsPageProps> = ({
                 className="pl-7 pr-3 py-1.5 text-xs rounded-lg border border-border bg-bg-secondary text-text-primary focus:outline-hidden focus:border-primary w-40 sm:w-48"
               />
             </div>
+
+            {/* Cloud Sync Button */}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={async () => {
+                if (!auth.currentUser) {
+                  alert('Bitte melde dich zuerst mit deinem Firebase-Account an, um PDFs geräteübergreifend zu synchronisieren.');
+                  return;
+                }
+                setIsSyncing(true);
+                try {
+                  const count = await syncLocalPdfsToCloud();
+                  alert(
+                    count > 0
+                      ? `${count} Dokument(e) erfolgreich in die Cloud synchronisiert!`
+                      : 'Alle lokalen Dokumente sind bereits in der Cloud.'
+                  );
+                } catch (e: any) {
+                  alert('Synchronisationsfehler: ' + (e?.message || 'Unbekannt'));
+                } finally {
+                  setIsSyncing(false);
+                }
+              }}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5"
+              title="Alle lokalen PDFs dieses Geräts in die Cloud synchronisieren"
+            >
+              <RefreshCw size={14} className={isSyncing ? 'animate-spin' : ''} />
+              <span className="hidden sm:inline">Cloud-Sync</span>
+            </Button>
 
             {/* New Folder */}
             <Button

@@ -81,7 +81,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
         setLoadingMessage('Lade Dokument aus der Cloud...');
         setIsCloudDownloading(true);
         try {
-          arrayBuffer = await downloadPdfFromCloud(documentFile.id, documentFile.downloadUrl);
+          arrayBuffer = await downloadPdfFromCloud(documentFile.id);
           if (arrayBuffer) {
             await savePdfToStorage(documentFile.storageKey, arrayBuffer);
           }
@@ -102,8 +102,18 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
 
       setLoadingMessage('Verarbeite Dokument...');
       const copy = arrayBuffer.slice(0);
-      const loadingTask = pdfjsLib.getDocument({ data: copy });
-      const loadedDoc = await loadingTask.promise;
+      const loadingTask = pdfjsLib.getDocument({
+        data: copy,
+        cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/cmaps/',
+        cMapPacked: true,
+      });
+
+      const loadedDoc = await Promise.race([
+        loadingTask.promise,
+        new Promise<any>((_, reject) =>
+          setTimeout(() => reject(new Error('PDF.js Verarbeitungs-Timeout')), 10000)
+        ),
+      ]);
 
       setPdfDoc(loadedDoc);
       setNumPages(loadedDoc.numPages);
@@ -111,6 +121,8 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
     } catch (err: any) {
       console.error('Error rendering PDF with pdf.js:', err);
       setError('Fehler beim Öffnen des Dokuments: ' + (err?.message || 'Ungültiges PDF-Format'));
+      setIsLoading(false);
+    } finally {
       setIsLoading(false);
     }
   }, [documentFile]);
@@ -417,7 +429,7 @@ export const PDFViewer: React.FC<PDFViewerProps> = ({ className }) => {
             />
 
             <p className="text-[11px] text-text-disabled mt-3">
-              Tipp: Öffne LearnMap auf dem iPad, damit die Datei automatisch in die Cloud übertragen wird.
+              Tipp: Klicke auf "PDF lokal auswählen" falls du die Datei auf dem PC hast, oder öffne LearnMap auf dem iPad zum automatischen Hochladen.
             </p>
 
             <button

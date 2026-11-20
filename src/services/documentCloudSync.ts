@@ -1,8 +1,19 @@
-import { auth, storage } from './firebase';
-import { ref, uploadBytes, getDownloadURL, getBytes } from 'firebase/storage';
+import { auth } from './firebase';
 import { writeCloudPayload, readCloudPayload } from './cloudPayload';
 import { getPdfFromStorage } from '../utils/documentStorage';
 import { useStore } from '../store';
+
+/**
+ * Timeout helper to prevent any network promise from hanging forever.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, errorMsg: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(errorMsg)), ms)
+    ),
+  ]);
+}
 
 /**
  * Converts ArrayBuffer to Base64 safely without call stack limit.
@@ -34,86 +45,57 @@ export function base64ToArrayBuffer(base64: string): ArrayBuffer {
 }
 
 /**
- * Uploads a PDF to the cloud for cross-device sync.
- * Tries Firebase Storage first (up to 5GB free), falls back to chunked Firestore.
+ * Uploads a PDF to Firestore chunked subcollection for reliable cross-device sync.
+ * Completely free on Firebase Spark and uses already-deployed firestore.rules.
  */
 export async function uploadPdfToCloud(
   docId: string,
   arrayBuffer: ArrayBuffer
-): Promise<{ downloadUrl?: string; method: 'storage' | 'firestore' }> {
+): Promise<{ success: boolean }> {
   const user = auth.currentUser;
   if (!user) {
     throw new Error('Nicht bei Firebase angemeldet');
   }
 
-  // 1. Attempt Firebase Storage
-  try {
-    const storageRef = ref(storage, `users/${user.uid}/pdfs/${docId}.pdf`);
-    const blob = new Blob([arrayBuffer], { type: 'application/pdf' });
-    await uploadBytes(storageRef, blob, {
-      contentType: 'application/pdf',
-      customMetadata: { docId, userId: user.uid },
-    });
-    const downloadUrl = await getDownloadURL(storageRef);
-    return { downloadUrl, method: 'storage' };
-  } catch (storageErr) {
-    console.warn('Firebase Storage upload failed, falling back to Firestore subcollection:', storageErr);
-  }
-
-  // 2. Fallback: Firestore chunked subcollection
   const base64Data = arrayBufferToBase64(arrayBuffer);
-  await writeCloudPayload(`users/${user.uid}/pdfs`, docId, {
-    base64Data,
-    docId,
-    updatedAt: new Date().toISOString(),
-  });
 
-  return { method: 'firestore' };
+  // Maximum 25 seconds for large PDFs (e.g. 10MB)
+  await withTimeout(
+    writeCloudPayload(`users/${user.uid}/pdfs`, docId, {
+      base64Data,
+      docId,
+      size: arrayBuffer.byteLength,
+      updatedAt: new Date().toISOString(),
+    }),
+    25000,
+    'Upload-Zeitüberschreitung'
+  );
+
+  return { success: true };
 }
 
 /**
- * Downloads a PDF from the cloud if missing from local IndexedDB.
+ * Downloads a PDF from the Firestore cloud subcollection.
+ * Has a strict 7-second timeout so it never hangs indefinitely.
  */
 export async function downloadPdfFromCloud(
-  docId: string,
-  downloadUrl?: string
+  docId: string
 ): Promise<ArrayBuffer | null> {
   const user = auth.currentUser;
-
-  // 1. If we have a direct downloadUrl, try fetching it
-  if (downloadUrl) {
-    try {
-      const res = await fetch(downloadUrl);
-      if (res.ok) {
-        return await res.arrayBuffer();
-      }
-    } catch (urlErr) {
-      console.warn('Direct download URL failed:', urlErr);
-    }
-  }
-
   if (!user) return null;
 
-  // 2. Try fetching from Firebase Storage
   try {
-    const storageRef = ref(storage, `users/${user.uid}/pdfs/${docId}.pdf`);
-    const buffer = await getBytes(storageRef);
-    if (buffer) return buffer;
-  } catch (storageErr) {
-    // Ignore and proceed to Firestore fallback
-  }
-
-  // 3. Try fetching from Firestore subcollection
-  try {
-    const res = await readCloudPayload<{ base64Data: string }>(
-      `users/${user.uid}/pdfs`,
-      docId
+    const res = await withTimeout(
+      readCloudPayload<{ base64Data: string }>(`users/${user.uid}/pdfs`, docId),
+      7000,
+      'Download-Zeitüberschreitung'
     );
+
     if (res?.data?.base64Data) {
       return base64ToArrayBuffer(res.data.base64Data);
     }
-  } catch (firestoreErr) {
-    console.warn('Firestore PDF download failed:', firestoreErr);
+  } catch (err) {
+    console.warn('PDF download from cloud failed or timed out:', err);
   }
 
   return null;
@@ -122,28 +104,34 @@ export async function downloadPdfFromCloud(
 /**
  * Synchronizes any locally existing PDFs that have not yet been backed up to the cloud.
  */
-export async function syncLocalPdfsToCloud(): Promise<void> {
+export async function syncLocalPdfsToCloud(): Promise<number> {
   const user = auth.currentUser;
-  if (!user) return;
+  if (!user) return 0;
 
-  const { documents, updateDocument } = useStore.getState();
+  const { documents } = useStore.getState();
   const docList = Object.values(documents || {});
+  let syncedCount = 0;
 
   for (const doc of docList) {
     try {
-      // Check if we have the file locally
       const localData = await getPdfFromStorage(doc.storageKey);
       if (!localData) continue;
 
-      // Check if it already has a downloadUrl or if we should sync
-      if (!doc.downloadUrl) {
-        const res = await uploadPdfToCloud(doc.id, localData);
-        if (res.downloadUrl) {
-          updateDocument(doc.id, { downloadUrl: res.downloadUrl });
-        }
+      // Check if already in cloud with a quick read
+      const existing = await withTimeout(
+        readCloudPayload(`users/${user.uid}/pdfs`, doc.id),
+        3000,
+        'Check-Timeout'
+      ).catch(() => null);
+
+      if (!existing?.data) {
+        await uploadPdfToCloud(doc.id, localData);
+        syncedCount++;
       }
     } catch (err) {
-      console.warn(`Failed to sync document ${doc.name} to cloud:`, err);
+      console.warn(`Sync for document ${doc.name} skipped:`, err);
     }
   }
+
+  return syncedCount;
 }

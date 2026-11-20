@@ -49,10 +49,16 @@ export async function deletePdfFromStorage(storageKey: string): Promise<void> {
  */
 export async function getPdfPageCount(arrayBuffer: ArrayBuffer): Promise<number> {
   try {
-    // Clone buffer because PDF.js might transfer it
     const copy = arrayBuffer.slice(0);
-    const loadingTask = pdfjsLib.getDocument({ data: copy });
-    const pdfDoc = await loadingTask.promise;
+    const loadingTask = pdfjsLib.getDocument({
+      data: copy,
+      cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@6.3.289/cmaps/',
+      cMapPacked: true,
+    });
+    const pdfDoc = await Promise.race([
+      loadingTask.promise,
+      new Promise<any>((_, reject) => setTimeout(() => reject(new Error('PDF.js Timeout')), 8000)),
+    ]);
     return pdfDoc.numPages;
   } catch (err) {
     console.warn('Could not determine PDF page count:', err);
