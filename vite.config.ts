@@ -2,8 +2,24 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
-import https from 'node:https'
 import { fileURLToPath } from 'node:url'
+import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
+
+const ttsCache = new Map<string, Buffer>()
+
+const VOICE_PRESETS: Record<string, string> = {
+  'en-us': 'en-US-JennyNeural',
+  'en-gb': 'en-GB-SoniaNeural',
+  'en': 'en-US-JennyNeural',
+  'es-es': 'es-ES-ElviraNeural',
+  'es': 'es-ES-ElviraNeural',
+  'fr-fr': 'fr-FR-DeniseNeural',
+  'fr': 'fr-FR-DeniseNeural',
+  'it-it': 'it-IT-ElsaNeural',
+  'it': 'it-IT-ElsaNeural',
+  'de-de': 'de-DE-KatjaNeural',
+  'de': 'de-DE-KatjaNeural',
+}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -194,14 +210,14 @@ function localFileStoragePlugin(): Plugin {
       next()
     })
 
-    // High-definition Neural TTS Proxy Endpoint
-    middlewares.use('/api/tts', (req: any, res: any, next: any) => {
+    // High-definition Azure / Edge Neural AI Speech Endpoint
+    middlewares.use('/api/tts', async (req: any, res: any, next: any) => {
       if (req.method !== 'GET') return next()
 
       try {
         const parsedUrl = new URL(req.url, 'http://localhost')
         const q = parsedUrl.searchParams.get('q') || ''
-        const lang = (parsedUrl.searchParams.get('lang') || 'en').split('-')[0].toLowerCase()
+        const lang = (parsedUrl.searchParams.get('lang') || 'en-US').toLowerCase()
 
         if (!q.trim()) {
           res.statusCode = 400
@@ -210,34 +226,41 @@ function localFileStoragePlugin(): Plugin {
           return
         }
 
-        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(q)}&tl=${lang}&client=tw-ob`
-        const options = {
-          headers: {
-            'User-Agent':
-              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            Accept: '*/*',
-          },
+        const cacheKey = `${lang}:${q.trim().toLowerCase()}`
+        if (ttsCache.has(cacheKey)) {
+          const cached = ttsCache.get(cacheKey)!
+          res.setHeader('Content-Type', 'audio/mpeg')
+          res.setHeader('Content-Length', cached.length)
+          res.setHeader('Cache-Control', 'public, max-age=604800')
+          res.end(cached)
+          return
         }
 
-        https
-          .get(ttsUrl, options, (googleRes) => {
-            if (googleRes.statusCode !== 200) {
-              res.statusCode = googleRes.statusCode || 500
-              res.end()
-              return
-            }
+        const selectedVoice =
+          VOICE_PRESETS[lang] ||
+          VOICE_PRESETS[lang.split('-')[0]] ||
+          'en-US-JennyNeural'
 
-            res.setHeader('Content-Type', 'audio/mpeg')
-            res.setHeader('Cache-Control', 'public, max-age=86400')
-            googleRes.pipe(res)
-          })
-          .on('error', (err) => {
-            console.warn('TTS proxy error:', err)
-            res.statusCode = 502
-            res.end()
-          })
-      } catch {
-        next()
+        const tts = new MsEdgeTTS()
+        await tts.setMetadata(selectedVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
+        const { audioStream } = tts.toStream(q.trim())
+
+        const chunks: Buffer[] = []
+        for await (const chunk of audioStream) {
+          chunks.push(chunk)
+        }
+
+        const audioBuffer = Buffer.concat(chunks)
+        ttsCache.set(cacheKey, audioBuffer)
+
+        res.setHeader('Content-Type', 'audio/mpeg')
+        res.setHeader('Content-Length', audioBuffer.length)
+        res.setHeader('Cache-Control', 'public, max-age=604800')
+        res.end(audioBuffer)
+      } catch (err: any) {
+        console.warn('Edge Neural TTS error:', err)
+        res.statusCode = 502
+        res.end()
       }
     })
   }
