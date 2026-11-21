@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
+import https from 'node:https'
 import { fileURLToPath } from 'node:url'
 
 const __filename = fileURLToPath(import.meta.url)
@@ -15,6 +16,30 @@ function localFileStoragePlugin(): Plugin {
 
   const handleMiddleware = (middlewares: any) => {
     middlewares.use('/api/storage', (req: any, res: any, next: any) => {
+      // Sicherheitsprüfung: CSRF / Cross-Origin Protection
+      // Verhindert, dass fremde Websites im Browser über localhost auf die Speicher-API zugreifen
+      const origin = req.headers['origin'] || req.headers['referer']
+      if (origin) {
+        try {
+          const originUrl = new URL(origin)
+          const isLocal =
+            originUrl.hostname === 'localhost' ||
+            originUrl.hostname === '127.0.0.1' ||
+            originUrl.hostname === '::1'
+          if (!isLocal && originUrl.host !== req.headers['host']) {
+            res.statusCode = 403
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ success: false, error: 'Forbidden: Cross-origin request rejected' }))
+            return
+          }
+        } catch {
+          res.statusCode = 403
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ success: false, error: 'Forbidden: Malformed origin' }))
+          return
+        }
+      }
+
       // Endpoint: /api/storage/info
       if (req.method === 'GET' && (req.url === '/info' || req.url === '/info/')) {
         const exists = fs.existsSync(dataFile)
@@ -69,10 +94,24 @@ function localFileStoragePlugin(): Plugin {
       // Endpoint: POST /api/storage
       if (req.method === 'POST' && (req.url === '' || req.url === '/')) {
         let body = ''
+        let bodySize = 0
+        const MAX_BODY_SIZE = 50 * 1024 * 1024 // 50 MB Limit zum Schutz vor Memory-Exhaustion (DoS)
+        let tooLarge = false
+
         req.on('data', (chunk: Buffer) => {
+          bodySize += chunk.length
+          if (bodySize > MAX_BODY_SIZE) {
+            tooLarge = true
+            req.destroy()
+            res.statusCode = 413
+            res.setHeader('Content-Type', 'application/json; charset=utf-8')
+            res.end(JSON.stringify({ success: false, error: 'Payload too large (max 50 MB)' }))
+            return
+          }
           body += chunk.toString()
         })
         req.on('end', () => {
+          if (tooLarge) return
           try {
             if (!fs.existsSync(dataDir)) {
               fs.mkdirSync(dataDir, { recursive: true })
@@ -153,6 +192,53 @@ function localFileStoragePlugin(): Plugin {
       }
 
       next()
+    })
+
+    // High-definition Neural TTS Proxy Endpoint
+    middlewares.use('/api/tts', (req: any, res: any, next: any) => {
+      if (req.method !== 'GET') return next()
+
+      try {
+        const parsedUrl = new URL(req.url, 'http://localhost')
+        const q = parsedUrl.searchParams.get('q') || ''
+        const lang = (parsedUrl.searchParams.get('lang') || 'en').split('-')[0].toLowerCase()
+
+        if (!q.trim()) {
+          res.statusCode = 400
+          res.setHeader('Content-Type', 'application/json; charset=utf-8')
+          res.end(JSON.stringify({ error: 'Missing query param q' }))
+          return
+        }
+
+        const ttsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(q)}&tl=${lang}&client=tw-ob`
+        const options = {
+          headers: {
+            'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            Accept: '*/*',
+          },
+        }
+
+        https
+          .get(ttsUrl, options, (googleRes) => {
+            if (googleRes.statusCode !== 200) {
+              res.statusCode = googleRes.statusCode || 500
+              res.end()
+              return
+            }
+
+            res.setHeader('Content-Type', 'audio/mpeg')
+            res.setHeader('Cache-Control', 'public, max-age=86400')
+            googleRes.pipe(res)
+          })
+          .on('error', (err) => {
+            console.warn('TTS proxy error:', err)
+            res.statusCode = 502
+            res.end()
+          })
+      } catch {
+        next()
+      }
     })
   }
 
