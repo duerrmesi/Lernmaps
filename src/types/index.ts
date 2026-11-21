@@ -340,6 +340,40 @@ export interface DocumentFile {
   updatedAt: string;
 }
 
+// ─── Vocabulary Trainer (Vokabeltrainer & Leitner-System) ──────────────────────
+
+export interface VocabDeck {
+  id: ID;
+  title: string;
+  description?: string;
+  language: string; // e.g. "Englisch", "Spanisch", "Französisch", "Latein"
+  langCode: string; // e.g. "en-US", "es-ES", "fr-FR", "it-IT", "la"
+  color?: string;   // e.g. "indigo", "emerald", "amber", "rose", "sky"
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VocabItem {
+  id: ID;
+  deckId: ID;
+  foreignWord: string;         // Fremdwort (z. B. "ubiquitous")
+  germanWord: string;          // Deutsche Übersetzung (z. B. "allgegenwärtig, überall vorkommend")
+  phonetic?: string;           // Aussprache / Lautschrift
+  exampleSentence?: string;    // Beispielsatz Fremdsprache
+  exampleTranslation?: string; // Übersetzung Beispielsatz
+  notes?: string;              // Wortart, Synonyme, grammatikalische Notiz
+
+  // Leitner Repetitive Learning (Box 1 - 5)
+  box: number;                 // 1 bis 5 (1 = Neu/Täglich, 2 = 2 Tage, 3 = 7 Tage, 4 = 14 Tage, 5 = 30 Tage)
+  nextReview: string;          // ISO Datum ab wann wieder fällig
+  lastReviewed: string | null;
+  timesCorrect: number;
+  timesIncorrect: number;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── App State ────────────────────────────────────────────────────────────────
 
 export interface AppState {
@@ -362,6 +396,8 @@ export interface AppState {
   glossaryTerms?: Record<ID, GlossaryTerm>;
   folders?: Record<ID, DocumentFolder>;
   documents?: Record<ID, DocumentFile>;
+  vocabDecks?: Record<ID, VocabDeck>;
+  vocabItems?: Record<ID, VocabItem>;
 }
 
 // ─── Search ───────────────────────────────────────────────────────────────────
@@ -380,7 +416,9 @@ export type SearchResultType =
   | 'timelineEvent'
   | 'glossary'
   | 'document'
-  | 'folder';
+  | 'folder'
+  | 'vocabDeck'
+  | 'vocabItem';
 
 export interface SearchResult {
   id: ID;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, Network, CreditCard, StickyNote, Layers, FolderOpen, Milestone, FileText, Folder } from 'lucide-react';
+import { Search, Network, CreditCard, StickyNote, Layers, FolderOpen, Milestone, FileText, Folder, Languages } from 'lucide-react';
 import { useSearchStore } from './searchStore';
 import { useStore } from '../../store';
 import { usePDFViewerStore } from '../../store/pdfViewerStore';
@@ -19,6 +19,8 @@ const TYPE_LABELS: Record<string, string> = {
   timelineEvent: 'Ereignis',
   document: 'PDF-Dokument',
   folder: 'Ordner',
+  vocabDeck: 'Themenpaket (Vokabeln)',
+  vocabItem: 'Vokabel',
 };
 
 const TYPE_ICONS: Record<string, React.ElementType> = {
@@ -32,6 +34,8 @@ const TYPE_ICONS: Record<string, React.ElementType> = {
   timelineEvent: Milestone,
   document: FileText,
   folder: Folder,
+  vocabDeck: Languages,
+  vocabItem: Languages,
 };
 
 function useSearchResults(query: string): SearchResult[] {
@@ -130,6 +134,30 @@ function useSearchResults(query: string): SearchResult[] {
     }
   });
 
+  Object.values(store.vocabDecks || {}).forEach((d) => {
+    if (fuzzyMatch(d.title, q) || fuzzyMatch(d.language, q) || fuzzyMatch(d.description || '', q)) {
+      results.push({
+        id: d.id,
+        type: 'vocabDeck',
+        title: d.title,
+        subtitle: `${d.language} · Vokabel-Paket`,
+      });
+    }
+  });
+
+  Object.values(store.vocabItems || {}).forEach((v) => {
+    if (fuzzyMatch(v.foreignWord, q) || fuzzyMatch(v.germanWord, q) || fuzzyMatch(v.exampleSentence || '', q)) {
+      const deck = store.vocabDecks?.[v.deckId];
+      results.push({
+        id: v.id,
+        type: 'vocabItem',
+        title: `${v.foreignWord} → ${v.germanWord}`,
+        subtitle: deck ? `${deck.title} (Box ${v.box})` : `Box ${v.box}`,
+        projectId: v.deckId, // reuse to hold deckId
+      });
+    }
+  });
+
   return results.slice(0, 20);
 }
 
@@ -177,6 +205,12 @@ export const SearchModal: React.FC = () => {
         break;
       case 'folder':
         navigate(`/projects/${result.projectId}/documents`);
+        break;
+      case 'vocabDeck':
+        navigate(`/vocab/${result.id}`);
+        break;
+      case 'vocabItem':
+        navigate(`/vocab/${result.projectId || ''}`);
         break;
     }
   }, [close, navigate]);

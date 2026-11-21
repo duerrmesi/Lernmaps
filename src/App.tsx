@@ -28,6 +28,9 @@ import { GlossaryPage } from './features/glossary/GlossaryPage';
 import { DocumentsPage } from './features/documents/DocumentsPage';
 import { AllDocumentsPage } from './features/documents/AllDocumentsPage';
 import { PDFViewer } from './features/documents/PDFViewer';
+import { VocabListPage } from './features/vocab/VocabListPage';
+import { VocabDeckDetailPage } from './features/vocab/VocabDeckDetailPage';
+import { VocabLearnSession } from './features/vocab/VocabLearnSession';
 import { initStorage } from './store';
 
 function App() {
@@ -86,6 +89,10 @@ function App() {
             <Route path="/notes" element={<AllNotesPage />} />
             <Route path="/documents" element={<AllDocumentsPage />} />
             <Route path="/glossary" element={<GlossaryPage />} />
+            <Route path="/vocab" element={<VocabListPage />} />
+            <Route path="/vocab/learn" element={<VocabLearnSession />} />
+            <Route path="/vocab/:deckId" element={<VocabDeckDetailPage />} />
+            <Route path="/vocab/:deckId/learn" element={<VocabLearnSession />} />
 
             {/* Project-scoped routes */}
             <Route path="/projects/:projectId" element={<ProjectDetail />} />

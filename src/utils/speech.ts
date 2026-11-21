@@ -17,11 +17,15 @@ export const speakText = (text: string, lang = 'de-DE'): boolean => {
     utterance.lang = lang;
     utterance.rate = 1.0;
 
-    // Try finding a German voice if possible
+    // Try finding a matching voice for the requested language
     const voices = window.speechSynthesis.getVoices();
-    const deVoice = voices.find((v) => v.lang.startsWith('de'));
-    if (deVoice) {
-      utterance.voice = deVoice;
+    const langPrefix = lang.split('-')[0].toLowerCase();
+    const matchedVoice =
+      voices.find((v) => v.lang.toLowerCase() === lang.toLowerCase()) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith(langPrefix));
+
+    if (matchedVoice) {
+      utterance.voice = matchedVoice;
     }
 
     window.speechSynthesis.speak(utterance);

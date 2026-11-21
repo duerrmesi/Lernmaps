@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import {
   FolderOpen,
@@ -18,6 +18,7 @@ import {
   PanelLeftClose,
   BookMarked,
   FileText,
+  Languages,
 } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useSearchStore } from '../features/search/searchStore';
@@ -35,9 +36,16 @@ export const Sidebar: React.FC = () => {
   const { isSidebarOpen, toggleSidebar } = useUIStore();
   const { user, syncStatus } = useCloudSync();
   const navigate = useNavigate();
-  const { projects, createProject } = useStore();
+  const { projects, createProject, vocabItems } = useStore();
   const [projectsOpen, setProjectsOpen] = useState(true);
   const storage = useStorageStatus();
+
+  const dueVocabCount = useMemo(() => {
+    const nowTime = new Date().getTime();
+    return Object.values(vocabItems || {}).filter(
+      (v) => !v.nextReview || new Date(v.nextReview).getTime() <= nowTime
+    ).length;
+  }, [vocabItems]);
 
   const projectList = Object.values(projects).sort((a, b) =>
     b.updatedAt.localeCompare(a.updatedAt)
@@ -197,6 +205,19 @@ export const Sidebar: React.FC = () => {
             <NavItem to="/mindmaps"   icon={Network}    label="Mindmaps" onClick={handleNavClick} />
             <NavItem to="/timelines"  icon={Milestone}  label="Zeitstrahlen" onClick={handleNavClick} />
             <NavItem to="/flashcards" icon={CreditCard} label="Karteikarten" onClick={handleNavClick} />
+            <NavItem
+              to="/vocab"
+              icon={Languages}
+              label="Vokabeltrainer"
+              badge={
+                dueVocabCount > 0 ? (
+                  <span className="ml-auto text-[9.5px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-500 text-white leading-none">
+                    {dueVocabCount}
+                  </span>
+                ) : undefined
+              }
+              onClick={handleNavClick}
+            />
             <NavItem to="/notes"      icon={StickyNote} label="Notizen" onClick={handleNavClick} />
             <NavItem to="/taskcards"  icon={Layers}     label="Taskcards" onClick={handleNavClick} />
             <NavItem to="/documents"  icon={FileText}   label="Dokumente & PDFs" onClick={handleNavClick} />
@@ -284,11 +305,12 @@ interface NavItemProps {
   to: string;
   icon: React.ElementType;
   label: string;
+  badge?: React.ReactNode;
   end?: boolean;
   onClick?: () => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, end, onClick }) => (
+const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, badge, end, onClick }) => (
   <NavLink
     to={to}
     end={end}
@@ -309,7 +331,8 @@ const NavItem: React.FC<NavItemProps> = ({ to, icon: Icon, label, end, onClick }
           className={cn('shrink-0', isActive ? 'text-text-primary' : 'text-text-disabled')}
           strokeWidth={isActive ? 2.2 : 1.8}
         />
-        <span>{label}</span>
+        <span className="truncate">{label}</span>
+        {badge}
       </>
     )}
   </NavLink>

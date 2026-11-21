@@ -34,9 +34,12 @@ import type {
   DocumentFolder,
   DocumentFile,
   PdfPageLink,
+  VocabDeck,
+  VocabItem,
 } from '../types';
 import { generateId, now } from '../utils';
 import { deletePdfFromStorage } from '../utils/documentStorage';
+import { calculateNextReview } from '../features/vocab/vocabLeitner';
 
 interface Actions {
   // Projects
@@ -96,6 +99,26 @@ interface Actions {
   createGlossaryTerm: (projectId: ID, term: string, definition: string, tags?: string[]) => GlossaryTerm;
   updateGlossaryTerm: (id: ID, updates: Partial<Pick<GlossaryTerm, 'term' | 'definition' | 'tags'>>) => void;
   deleteGlossaryTerm: (id: ID) => void;
+
+  // Vocab Decks & Items (Vokabeltrainer & Leitner-System)
+  createVocabDeck: (title: string, language: string, description?: string, langCode?: string, color?: string) => VocabDeck;
+  updateVocabDeck: (id: ID, updates: Partial<Pick<VocabDeck, 'title' | 'language' | 'langCode' | 'description' | 'color'>>) => void;
+  deleteVocabDeck: (id: ID) => void;
+  createVocabItem: (
+    deckId: ID,
+    foreignWord: string,
+    germanWord: string,
+    extra?: { phonetic?: string; exampleSentence?: string; exampleTranslation?: string; notes?: string }
+  ) => VocabItem;
+  updateVocabItem: (id: ID, updates: Partial<Omit<VocabItem, 'id' | 'deckId' | 'createdAt'>>) => void;
+  deleteVocabItem: (id: ID) => void;
+  batchCreateVocabItems: (
+    deckId: ID,
+    items: Array<{ foreignWord: string; germanWord: string; exampleSentence?: string; notes?: string }>
+  ) => void;
+  recordVocabResult: (id: ID, isCorrect: boolean) => void;
+  resetVocabItemProgress: (id: ID) => void;
+  resetDeckProgress: (deckId: ID) => void;
 
   // Taskcards
   createTaskcard: (projectId: ID, title?: string, position?: NodePosition) => Taskcard;
@@ -216,6 +239,8 @@ export const useStore = create<StoreState>()(
       glossaryTerms: {},
       folders: {},
       documents: {},
+      vocabDecks: {},
+      vocabItems: {},
 
       // ─── Projects ──────────────────────────────────────────────────────
       createProject: (title, description = '') => {
@@ -755,6 +780,188 @@ export const useStore = create<StoreState>()(
           const terms = { ...(s.glossaryTerms || {}) };
           delete terms[id];
           return { glossaryTerms: terms };
+        });
+      },
+
+      // ─── Vocab Decks & Items (Vokabeltrainer & Leitner-System) ─────────
+      createVocabDeck: (title, language, description = '', langCode = 'en-US', color = 'indigo') => {
+        const deck: VocabDeck = {
+          id: generateId(),
+          title: title.trim(),
+          language: language.trim(),
+          description: description.trim(),
+          langCode,
+          color,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          vocabDecks: { ...(s.vocabDecks || {}), [deck.id]: deck },
+        }));
+        return deck;
+      },
+
+      updateVocabDeck: (id, updates) => {
+        set((s) => {
+          const current = (s.vocabDecks || {})[id];
+          if (!current) return s;
+          return {
+            vocabDecks: {
+              ...(s.vocabDecks || {}),
+              [id]: { ...current, ...updates, updatedAt: now() },
+            },
+          };
+        });
+      },
+
+      deleteVocabDeck: (id) => {
+        set((s) => {
+          const decks = { ...(s.vocabDecks || {}) };
+          delete decks[id];
+          const items = { ...(s.vocabItems || {}) };
+          for (const itemId in items) {
+            if (items[itemId]?.deckId === id) {
+              delete items[itemId];
+            }
+          }
+          return { vocabDecks: decks, vocabItems: items };
+        });
+      },
+
+      createVocabItem: (deckId, foreignWord, germanWord, extra = {}) => {
+        const item: VocabItem = {
+          id: generateId(),
+          deckId,
+          foreignWord: foreignWord.trim(),
+          germanWord: germanWord.trim(),
+          phonetic: extra.phonetic?.trim() || undefined,
+          exampleSentence: extra.exampleSentence?.trim() || undefined,
+          exampleTranslation: extra.exampleTranslation?.trim() || undefined,
+          notes: extra.notes?.trim() || undefined,
+          box: 1,
+          nextReview: now(),
+          lastReviewed: null,
+          timesCorrect: 0,
+          timesIncorrect: 0,
+          createdAt: now(),
+          updatedAt: now(),
+        };
+        set((s) => ({
+          vocabItems: { ...(s.vocabItems || {}), [item.id]: item },
+        }));
+        return item;
+      },
+
+      updateVocabItem: (id, updates) => {
+        set((s) => {
+          const current = (s.vocabItems || {})[id];
+          if (!current) return s;
+          return {
+            vocabItems: {
+              ...(s.vocabItems || {}),
+              [id]: { ...current, ...updates, updatedAt: now() },
+            },
+          };
+        });
+      },
+
+      deleteVocabItem: (id) => {
+        set((s) => {
+          const items = { ...(s.vocabItems || {}) };
+          delete items[id];
+          return { vocabItems: items };
+        });
+      },
+
+      batchCreateVocabItems: (deckId, items) => {
+        set((s) => {
+          const newItems = { ...(s.vocabItems || {}) };
+          const currentTime = now();
+          items.forEach((it) => {
+            if (!it.foreignWord.trim() || !it.germanWord.trim()) return;
+            const id = generateId();
+            newItems[id] = {
+              id,
+              deckId,
+              foreignWord: it.foreignWord.trim(),
+              germanWord: it.germanWord.trim(),
+              exampleSentence: it.exampleSentence?.trim() || undefined,
+              notes: it.notes?.trim() || undefined,
+              box: 1,
+              nextReview: currentTime,
+              lastReviewed: null,
+              timesCorrect: 0,
+              timesIncorrect: 0,
+              createdAt: currentTime,
+              updatedAt: currentTime,
+            };
+          });
+          return { vocabItems: newItems };
+        });
+      },
+
+      recordVocabResult: (id, isCorrect) => {
+        set((s) => {
+          const current = (s.vocabItems || {})[id];
+          if (!current) return s;
+          const next = calculateNextReview(current.box, isCorrect);
+          const updated: VocabItem = {
+            ...current,
+            box: next.nextBox,
+            nextReview: next.nextReview,
+            lastReviewed: now(),
+            timesCorrect: current.timesCorrect + (isCorrect ? 1 : 0),
+            timesIncorrect: current.timesIncorrect + (isCorrect ? 0 : 1),
+            updatedAt: now(),
+          };
+          return {
+            vocabItems: {
+              ...(s.vocabItems || {}),
+              [id]: updated,
+            },
+          };
+        });
+      },
+
+      resetVocabItemProgress: (id) => {
+        set((s) => {
+          const current = (s.vocabItems || {})[id];
+          if (!current) return s;
+          return {
+            vocabItems: {
+              ...(s.vocabItems || {}),
+              [id]: {
+                ...current,
+                box: 1,
+                nextReview: now(),
+                lastReviewed: null,
+                timesCorrect: 0,
+                timesIncorrect: 0,
+                updatedAt: now(),
+              },
+            },
+          };
+        });
+      },
+
+      resetDeckProgress: (deckId) => {
+        set((s) => {
+          const items = { ...(s.vocabItems || {}) };
+          const currentTime = now();
+          for (const id in items) {
+            if (items[id]?.deckId === deckId) {
+              items[id] = {
+                ...items[id],
+                box: 1,
+                nextReview: currentTime,
+                lastReviewed: null,
+                timesCorrect: 0,
+                timesIncorrect: 0,
+                updatedAt: currentTime,
+              };
+            }
+          }
+          return { vocabItems: items };
         });
       },
 
@@ -1685,8 +1892,11 @@ export function getSerializableState(): AppState {
     examResults: s.examResults || {},
     timelines: s.timelines || {},
     timelineEvents: s.timelineEvents || {},
+    glossaryTerms: s.glossaryTerms || {},
     folders: s.folders || {},
     documents: s.documents || {},
+    vocabDecks: s.vocabDecks || {},
+    vocabItems: s.vocabItems || {},
   };
 }
 
@@ -1727,8 +1937,11 @@ export function importFullState(payload: any, persistToDisk = true): boolean {
         examResults: safeArr(rawState.examResults, current.examResults),
         timelines: safeObj(rawState.timelines, current.timelines ?? {}),
         timelineEvents: safeObj(rawState.timelineEvents, current.timelineEvents ?? {}),
+        glossaryTerms: safeObj(rawState.glossaryTerms, current.glossaryTerms ?? {}),
         folders: safeObj(rawState.folders, current.folders ?? {}),
         documents: safeObj(rawState.documents, current.documents ?? {}),
+        vocabDecks: safeObj(rawState.vocabDecks, current.vocabDecks ?? {}),
+        vocabItems: safeObj(rawState.vocabItems, current.vocabItems ?? {}),
       }));
     } finally {
       setSyncPaused(false);
@@ -1927,5 +2140,34 @@ export const useTimelineEventsByTimeline = (timelineId: ID) => {
   return useMemo(
     () => Object.values(events || {}).filter((e) => e.timelineId === timelineId),
     [events, timelineId]
+  );
+};
+
+export const useVocabDecks = () => {
+  const decks = useStore((s) => s.vocabDecks);
+  return useMemo(
+    () => Object.values(decks || {}).sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
+    [decks]
+  );
+};
+
+export const useVocabDeck = (id?: ID) => useStore((s) => (id ? s.vocabDecks?.[id] : undefined));
+
+export const useVocabItemsByDeck = (deckId?: ID) => {
+  const items = useStore((s) => s.vocabItems);
+  return useMemo(
+    () =>
+      Object.values(items || {})
+        .filter((it) => (deckId ? it.deckId === deckId : true))
+        .sort((a, b) => a.box - b.box || a.foreignWord.localeCompare(b.foreignWord)),
+    [items, deckId]
+  );
+};
+
+export const useAllVocabItems = () => {
+  const items = useStore((s) => s.vocabItems);
+  return useMemo(
+    () => Object.values(items || {}).sort((a, b) => a.foreignWord.localeCompare(b.foreignWord)),
+    [items]
   );
 };
