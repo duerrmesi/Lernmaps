@@ -3,23 +3,6 @@ import { defineConfig, type Plugin } from 'vite'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { MsEdgeTTS, OUTPUT_FORMAT } from 'msedge-tts'
-
-const ttsCache = new Map<string, Buffer>()
-
-const VOICE_PRESETS: Record<string, string> = {
-  'en-us': 'en-US-JennyNeural',
-  'en-gb': 'en-GB-SoniaNeural',
-  'en': 'en-US-JennyNeural',
-  'es-es': 'es-ES-ElviraNeural',
-  'es': 'es-ES-ElviraNeural',
-  'fr-fr': 'fr-FR-DeniseNeural',
-  'fr': 'fr-FR-DeniseNeural',
-  'it-it': 'it-IT-ElsaNeural',
-  'it': 'it-IT-ElsaNeural',
-  'de-de': 'de-DE-KatjaNeural',
-  'de': 'de-DE-KatjaNeural',
-}
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -208,60 +191,6 @@ function localFileStoragePlugin(): Plugin {
       }
 
       next()
-    })
-
-    // High-definition Azure / Edge Neural AI Speech Endpoint
-    middlewares.use('/api/tts', async (req: any, res: any, next: any) => {
-      if (req.method !== 'GET') return next()
-
-      try {
-        const parsedUrl = new URL(req.url, 'http://localhost')
-        const q = parsedUrl.searchParams.get('q') || ''
-        const lang = (parsedUrl.searchParams.get('lang') || 'en-US').toLowerCase()
-
-        if (!q.trim()) {
-          res.statusCode = 400
-          res.setHeader('Content-Type', 'application/json; charset=utf-8')
-          res.end(JSON.stringify({ error: 'Missing query param q' }))
-          return
-        }
-
-        const cacheKey = `${lang}:${q.trim().toLowerCase()}`
-        if (ttsCache.has(cacheKey)) {
-          const cached = ttsCache.get(cacheKey)!
-          res.setHeader('Content-Type', 'audio/mpeg')
-          res.setHeader('Content-Length', cached.length)
-          res.setHeader('Cache-Control', 'public, max-age=604800')
-          res.end(cached)
-          return
-        }
-
-        const selectedVoice =
-          VOICE_PRESETS[lang] ||
-          VOICE_PRESETS[lang.split('-')[0]] ||
-          'en-US-JennyNeural'
-
-        const tts = new MsEdgeTTS()
-        await tts.setMetadata(selectedVoice, OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3)
-        const { audioStream } = tts.toStream(q.trim())
-
-        const chunks: Buffer[] = []
-        for await (const chunk of audioStream) {
-          chunks.push(chunk)
-        }
-
-        const audioBuffer = Buffer.concat(chunks)
-        ttsCache.set(cacheKey, audioBuffer)
-
-        res.setHeader('Content-Type', 'audio/mpeg')
-        res.setHeader('Content-Length', audioBuffer.length)
-        res.setHeader('Cache-Control', 'public, max-age=604800')
-        res.end(audioBuffer)
-      } catch (err: any) {
-        console.warn('Edge Neural TTS error:', err)
-        res.statusCode = 502
-        res.end()
-      }
     })
   }
 
