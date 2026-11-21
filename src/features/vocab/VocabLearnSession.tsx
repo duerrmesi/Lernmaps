@@ -17,7 +17,7 @@ import {
 import { useStore, useVocabDeck, useVocabItemsByDeck, useAllVocabItems } from '../../store';
 import { Button } from '../../components/Button';
 import { cn } from '../../utils/cn';
-import { speakText, stopSpeech } from '../../utils/speech';
+import { speakText, stopSpeech, prefetchAudio } from '../../utils/speech';
 import {
   BOX_CONFIG,
   isVocabDue,
@@ -126,6 +126,15 @@ export const VocabLearnSession: React.FC = () => {
     setIsRevealed(false);
     setUserInput('');
     setAnswerResult(null);
+
+    // Prefetch audio for current and upcoming card
+    if (currentCard) {
+      prefetchAudio(currentCard.foreignWord, langCode);
+    }
+    const nextCard = sessionCards[currentIndex + 1];
+    if (nextCard) {
+      prefetchAudio(nextCard.foreignWord, langCode);
+    }
 
     // Only auto-play audio on new card if direction is foreign-to-de,
     // so in de-to-foreign we don't give away the foreign word before the user attempts it!

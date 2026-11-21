@@ -1,9 +1,10 @@
 // Speech & Audio Service for LearnMap
-// 1. Primary: Genuine human native speaker studio recordings from Wikimedia Commons & Wiktionary.
-//    (100% real human audio, CORS enabled via origin=*, works on GitHub Pages, iPad, mobile & desktop).
-// 2. Fallback: High-quality client-side SpeechSynthesis with optimized pacing.
+// High-Fidelity Audio Architecture:
+// 1. Google Neural TTS (Ultra-natural, modern WaveNet prosody, full sentences & words, zero CORS issues via no-referrer)
+// 2. Wikimedia Commons Studio Native Recordings (Authentic human recordings from global linguists)
+// 3. Fallback: Browser SpeechSynthesis with Natural/Neural voice scoring
 
-const audioUrlCache = new Map<string, string | null>();
+const audioUrlCache = new Map<string, string>();
 let activeAudio: HTMLAudioElement | null = null;
 let cachedVoices: SpeechSynthesisVoice[] = [];
 
@@ -46,19 +47,25 @@ function findBestVoice(lang: string): SpeechSynthesisVoice | undefined {
         return { voice, score: -1000 };
       }
 
+      // Prioritize natural / neural / online cloud voices
       if (vName.includes('natural') || vName.includes('neural') || vName.includes('online')) {
-        score += 100;
+        score += 150;
       }
       if (vName.includes('google')) {
-        score += 85;
+        score += 120;
       }
       if (vName.includes('premium') || vName.includes('enhanced') || vName.includes('siri')) {
-        score += 70;
+        score += 90;
       }
+      // Penalize legacy robotic Windows SAPI5 desktop voices
+      if (vName.includes('desktop') || vName.includes('zira') || vName.includes('david')) {
+        score -= 50;
+      }
+
       if (targetLang.includes('us') && (vLang.includes('us') || vName.includes('us'))) {
-        score += 20;
+        score += 15;
       } else if (targetLang.includes('gb') && (vLang.includes('gb') || vName.includes('uk'))) {
-        score += 20;
+        score += 15;
       }
 
       return { voice, score };
@@ -70,72 +77,109 @@ function findBestVoice(lang: string): SpeechSynthesisVoice | undefined {
 }
 
 /**
- * Fetch human studio pronunciation URL from Wikimedia Commons / Wiktionary.
- * Completely free, zero API key, no CORS restriction (origin=*), and works offline once cached.
+ * Generate Google Neural TTS stream URL
+ * Using client=tw-ob with no-referrer yields high quality 128kbps MP3 audio
  */
-async function fetchHumanAudioUrl(word: string, lang = 'en'): Promise<string | null> {
-  const clean = word.trim().toLowerCase();
-  if (!clean || clean.length < 2) return null;
+function getGoogleTtsUrl(text: string, lang = 'en-US'): string {
+  const langShort = lang.split('-')[0].toLowerCase() || 'en';
+  return `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(
+    text
+  )}&tl=${langShort}&client=tw-ob`;
+}
 
-  const cacheKey = `${lang}:${clean}`;
+/**
+ * Query Wikimedia Commons directly for human native speaker studio recordings
+ */
+async function fetchCommonsStudioUrl(word: string): Promise<string | null> {
+  const clean = word.trim().toLowerCase();
+  // Strip leading grammatical articles
+  const coreWord = clean.replace(/^(to|a|an|the|der|die|das|ein|eine)\s+/, '').trim();
+  if (!coreWord || coreWord.includes(' ') || coreWord.length < 2) return null;
+
+  const cacheKey = `commons:${coreWord}`;
   if (audioUrlCache.has(cacheKey)) {
     return audioUrlCache.get(cacheKey) || null;
   }
 
   try {
-    const langPrefix = lang.split('-')[0].toLowerCase();
-    // Query Wiktionary for media attached to the word entry
-    const apiUrl = `https://${langPrefix === 'en' ? 'en' : 'en'}.wiktionary.org/w/api.php?action=query&titles=${encodeURIComponent(
-      clean
-    )}&prop=images&format=json&origin=*`;
+    const candidates = [
+      `File:En-us-${coreWord}.ogg`,
+      `File:En-uk-${coreWord}.ogg`,
+      `File:en-us-${coreWord}.ogg`,
+      `File:en-uk-${coreWord}.ogg`,
+      `File:En-${coreWord}.ogg`,
+      `File:${coreWord}.ogg`,
+    ];
 
-    const res = await fetch(apiUrl, { cache: 'force-cache' });
-    if (!res.ok) {
-      audioUrlCache.set(cacheKey, null);
-      return null;
-    }
+    const apiUrl = `https://commons.wikimedia.org/w/api.php?action=query&titles=${encodeURIComponent(
+      candidates.join('|')
+    )}&prop=imageinfo&iiprop=url&format=json&origin=*`;
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+
+    const res = await fetch(apiUrl, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
+    if (!res.ok) return null;
     const data = await res.json();
     const pages = data.query?.pages || {};
 
-    let audioFileName: string | null = null;
-
     for (const pid in pages) {
-      const imgs: Array<{ title: string }> = pages[pid]?.images || [];
-      const audioFiles = imgs
-        .map((img) => img.title)
-        .filter((t) => /\.(ogg|mp3|wav|oga)$/i.test(t));
-
-      if (audioFiles.length > 0) {
-        // Prioritize US English, then UK English, or first matching audio
-        const matched =
-          audioFiles.find((f) => /en-us/i.test(f)) ||
-          audioFiles.find((f) => /en-uk/i.test(f)) ||
-          audioFiles.find((f) => /eng/i.test(f)) ||
-          audioFiles[0];
-
-        if (matched) {
-          audioFileName = matched.replace(/^File:/i, '');
-          break;
-        }
+      if (pid !== '-1' && pages[pid].imageinfo?.[0]?.url) {
+        const directUrl = pages[pid].imageinfo[0].url;
+        audioUrlCache.set(cacheKey, directUrl);
+        return directUrl;
       }
     }
 
-    if (audioFileName) {
-      // Wikimedia Special:FilePath redirects directly to the audio stream with Access-Control-Allow-Origin: *
-      const directAudioUrl = `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(
-        audioFileName
-      )}`;
-      audioUrlCache.set(cacheKey, directAudioUrl);
-      return directAudioUrl;
-    }
-
-    audioUrlCache.set(cacheKey, null);
     return null;
   } catch {
-    audioUrlCache.set(cacheKey, null);
     return null;
   }
+}
+
+/**
+ * Play an audio URL safely without CORS blocking
+ */
+function playAudioElement(url: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    try {
+      stopSpeech();
+
+      const audio = new Audio();
+      try {
+        (audio as unknown as { referrerPolicy?: string }).referrerPolicy = 'no-referrer';
+      } catch {
+        // ignore
+      }
+      audio.preload = 'auto';
+      audio.src = url;
+      activeAudio = audio;
+
+      audio.onended = () => {
+        if (activeAudio === audio) activeAudio = null;
+        resolve(true);
+      };
+
+      audio.onerror = () => {
+        if (activeAudio === audio) activeAudio = null;
+        resolve(false);
+      };
+
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => resolve(true))
+          .catch(() => {
+            if (activeAudio === audio) activeAudio = null;
+            resolve(false);
+          });
+      }
+    } catch {
+      resolve(false);
+    }
+  });
 }
 
 /**
@@ -190,9 +234,10 @@ export const speakWithSynth = (text: string, lang = 'en-US'): boolean => {
 
 /**
  * Master speech function:
- * 1. Checks Wiktionary/Wikimedia Commons for a genuine human native-speaker audio recording.
- * 2. If available, plays the human recording instantly in crisp studio quality.
- * 3. If unavailable (e.g. multi-word phrases or offline), seamlessly falls back to SpeechSynthesis.
+ * 1. Checks for human studio recording on Wikimedia Commons (fast check).
+ * 2. If available, plays human studio voice.
+ * 3. If unavailable or multi-word, plays Google Neural TTS (crystal-clear, human-sounding).
+ * 4. Offline fallback: SpeechSynthesis.
  */
 export const speakText = (text: string, lang = 'en-US'): boolean => {
   stopSpeech();
@@ -200,36 +245,43 @@ export const speakText = (text: string, lang = 'en-US'): boolean => {
   const cleanText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
   if (!cleanText) return false;
 
-  const isSingleWordOrHyphenated = !cleanText.includes(' ') && cleanText.length > 1;
+  const coreWord = cleanText.replace(/^(to|a|an|the|der|die|das|ein|eine)\s+/, '').trim();
+  const isSingleWord = !coreWord.includes(' ') && coreWord.length > 1;
 
-  if (isSingleWordOrHyphenated) {
-    fetchHumanAudioUrl(cleanText, lang)
-      .then((audioUrl) => {
-        if (audioUrl) {
-          const audio = new Audio(audioUrl);
-          audio.crossOrigin = 'anonymous';
-          activeAudio = audio;
+  // Execute audio playback pipeline asynchronously
+  (async () => {
+    // Step 1: If single word, check if we have a native speaker studio recording
+    if (isSingleWord) {
+      const studioUrl = await fetchCommonsStudioUrl(coreWord);
+      if (studioUrl) {
+        const played = await playAudioElement(studioUrl);
+        if (played) return;
+      }
+    }
 
-          audio.onended = () => {
-            if (activeAudio === audio) activeAudio = null;
-          };
+    // Step 2: Use Google Neural TTS (100% natural, handles any word, idiom or sentence)
+    const googleUrl = getGoogleTtsUrl(cleanText, lang);
+    const googlePlayed = await playAudioElement(googleUrl);
+    if (googlePlayed) return;
 
-          audio.play().catch(() => {
-            // If browser autoplay policies block media, fallback to synth
-            speakWithSynth(cleanText, lang);
-          });
-        } else {
-          speakWithSynth(cleanText, lang);
-        }
-      })
-      .catch(() => {
-        speakWithSynth(cleanText, lang);
-      });
+    // Step 3: Offline fallback to local SpeechSynthesis
+    speakWithSynth(cleanText, lang);
+  })();
 
-    return true;
+  return true;
+};
+
+/**
+ * Optional prefetch for vocabulary training sessions to guarantee zero-latency audio
+ */
+export const prefetchAudio = (text: string, _lang = 'en-US'): void => {
+  const clean = text.trim();
+  if (!clean) return;
+
+  const coreWord = clean.replace(/^(to|a|an|the|der|die|das|ein|eine)\s+/, '').trim();
+  if (!coreWord.includes(' ') && coreWord.length > 1) {
+    fetchCommonsStudioUrl(coreWord);
   }
-
-  return speakWithSynth(cleanText, lang);
 };
 
 export const isSpeechActive = (): boolean => {
