@@ -12,6 +12,7 @@ import {
   Trophy,
   ArrowRight,
   Eye,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { useStore, useVocabDeck, useVocabItemsByDeck, useAllVocabItems } from '../../store';
 import { Button } from '../../components/Button';
@@ -26,6 +27,7 @@ import {
 import type { VocabItem } from '../../types';
 
 type LearnMode = 'flip' | 'type';
+type QueryDirection = 'de-to-foreign' | 'foreign-to-de';
 
 export const VocabLearnSession: React.FC = () => {
   const { deckId } = useParams<{ deckId?: string }>();
@@ -42,7 +44,8 @@ export const VocabLearnSession: React.FC = () => {
   const filterParam = queryParams.get('filter'); // 'due' | 'all' | null
   const boxParam = queryParams.get('box'); // '1'..'5' | null
 
-  // Session Settings
+  // Session Settings: Default to Deutsch -> Fremdsprache as requested
+  const [direction, setDirection] = useState<QueryDirection>('de-to-foreign');
   const [mode, setMode] = useState<LearnMode>('type'); // 'flip' or 'type'
   const [autoAudio, setAutoAudio] = useState(true); // default true per user request
 
@@ -58,7 +61,7 @@ export const VocabLearnSession: React.FC = () => {
     } else if (filterParam === 'all') {
       // Free practice: all cards
     } else {
-      // Default: Due cards first. If no due cards exist, fall back to all cards so user is never locked out!
+      // Default: Due cards first. If none due, fallback to all cards
       const dueCards = source.filter((i) => isVocabDue(i));
       if (dueCards.length > 0) {
         source = dueCards;
@@ -108,7 +111,7 @@ export const VocabLearnSession: React.FC = () => {
   const langCode = effectiveDeck?.langCode || 'en-US';
   const langName = effectiveDeck?.language || 'Fremdsprache';
 
-  // Play audio pronunciation
+  // Play audio pronunciation for the foreign word
   const playAudio = useCallback(
     (text?: string) => {
       const wordToSpeak = text || currentCard?.foreignWord;
@@ -124,14 +127,15 @@ export const VocabLearnSession: React.FC = () => {
     setUserInput('');
     setAnswerResult(null);
 
-    if (currentCard && autoAudio) {
-      // Small timeout for smooth audio transition
+    // Only auto-play audio on new card if direction is foreign-to-de,
+    // so in de-to-foreign we don't give away the foreign word before the user attempts it!
+    if (currentCard && autoAudio && direction === 'foreign-to-de') {
       const timer = setTimeout(() => {
         playAudio(currentCard.foreignWord);
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [currentIndex, currentCard?.id, autoAudio, playAudio]);
+  }, [currentIndex, currentCard?.id, autoAudio, direction, playAudio]);
 
   // Focus input on type mode
   useEffect(() => {
@@ -176,12 +180,24 @@ export const VocabLearnSession: React.FC = () => {
   const handleCheckAnswer = () => {
     if (!currentCard || !userInput.trim()) return;
 
-    const result = checkTranslationAnswer(userInput, currentCard.germanWord);
+    // Compare against foreignWord if direction is de-to-foreign, or germanWord if foreign-to-de
+    const targetAnswer =
+      direction === 'de-to-foreign' ? currentCard.foreignWord : currentCard.germanWord;
+
+    const result = checkTranslationAnswer(userInput, targetAnswer);
     setAnswerResult(result);
     setIsRevealed(true);
 
-    if (result.status === 'exact') {
-      // Auto advance or wait on click/enter
+    // Play foreign audio when answer is revealed in de-to-foreign mode
+    if (autoAudio && direction === 'de-to-foreign') {
+      playAudio(currentCard.foreignWord);
+    }
+  };
+
+  const handleRevealFlip = () => {
+    setIsRevealed(true);
+    if (autoAudio && direction === 'de-to-foreign') {
+      playAudio(currentCard.foreignWord);
     }
   };
 
@@ -198,19 +214,19 @@ export const VocabLearnSession: React.FC = () => {
           }
         } else {
           // Answer has been checked
-          if (e.key === 'Enter' || e.code === 'Space') {
+          if (e.key === 'Enter') {
             e.preventDefault();
-            if (answerResult.status === 'exact') {
-              advanceToNext(true);
-            } else if (answerResult.status === 'close') {
-              // Default to correct on Enter
+            if (answerResult.status === 'exact' || answerResult.status === 'close') {
               advanceToNext(true);
             } else {
               advanceToNext(false);
             }
           } else if (e.key === '1') {
+            e.preventDefault();
             advanceToNext(false);
           } else if (e.key === '2') {
+            // [2] Key accepts the answer as correct, even if system marked it incorrect!
+            e.preventDefault();
             advanceToNext(true);
           }
         }
@@ -219,7 +235,7 @@ export const VocabLearnSession: React.FC = () => {
         if (!isRevealed) {
           if (e.code === 'Space' || e.key === 'Enter') {
             e.preventDefault();
-            setIsRevealed(true);
+            handleRevealFlip();
           }
         } else {
           if (e.key === '1') {
@@ -403,6 +419,13 @@ export const VocabLearnSession: React.FC = () => {
 
   const boxConfig = BOX_CONFIG[currentCard.box] || BOX_CONFIG[1];
 
+  // Derive Prompt vs Expected Answer based on query direction
+  const isDeToForeign = direction === 'de-to-foreign';
+  const promptHeading = isDeToForeign ? currentCard.germanWord : currentCard.foreignWord;
+  const promptSubLabel = isDeToForeign ? 'Deutsche Bedeutung' : `Fremdwort (${langName})`;
+  const targetExpected = isDeToForeign ? currentCard.foreignWord : currentCard.germanWord;
+  const targetLabel = isDeToForeign ? `Fremdwort (${langName})` : 'Deutsche Bedeutung';
+
   return (
     <div className="flex-1 flex flex-col h-full bg-bg-canvas overflow-y-auto scrollbar-thin">
       {/* Top Header Bar */}
@@ -429,8 +452,23 @@ export const VocabLearnSession: React.FC = () => {
             </div>
           </div>
 
-          {/* Mode Switcher & Audio Toggle */}
-          <div className="flex items-center gap-2">
+          {/* Direction, Auto-Audio & Mode Switcher */}
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Direction Switcher Button */}
+            <button
+              onClick={() => setDirection((d) => (d === 'de-to-foreign' ? 'foreign-to-de' : 'de-to-foreign'))}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-border bg-bg-canvas hover:bg-bg-hover text-xs font-medium text-text-secondary hover:text-text-primary transition-colors cursor-pointer"
+              title="Klicken, um Abfragerichtung umzukehren"
+            >
+              <ArrowLeftRight size={12} className="text-indigo-500" />
+              <span className="hidden sm:inline font-semibold">
+                {isDeToForeign ? 'Deutsch → Fremdsprache' : 'Fremdsprache → Deutsch'}
+              </span>
+              <span className="sm:hidden font-semibold">
+                {isDeToForeign ? 'DE → EN' : 'EN → DE'}
+              </span>
+            </button>
+
             {/* Auto Audio Toggle */}
             <button
               onClick={() => setAutoAudio((a) => !a)}
@@ -456,7 +494,7 @@ export const VocabLearnSession: React.FC = () => {
                     ? 'bg-bg-canvas text-text-primary shadow-xs font-semibold'
                     : 'text-text-disabled hover:text-text-secondary'
                 )}
-                title="Tipp-Modus: Übersetzung aktiv eintippen"
+                title="Tipp-Modus: Antwort aktiv eintippen"
               >
                 <Keyboard size={12} />
                 <span className="hidden sm:inline">Tippen</span>
@@ -505,38 +543,50 @@ export const VocabLearnSession: React.FC = () => {
             </span>
 
             <div className="flex items-center gap-2">
-              <span className="text-xs text-text-secondary font-medium">{langName}</span>
-              <button
-                onClick={() => playAudio()}
-                className="p-1.5 rounded-lg border border-border bg-bg-canvas hover:bg-bg-hover text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer"
-                title="Aussprache wiederholen"
-              >
-                <Volume2 size={15} />
-              </button>
+              <span className="text-xs text-text-secondary font-medium">
+                {isDeToForeign ? `Deutsch → ${langName}` : `${langName} → Deutsch`}
+              </span>
+              {/* Only show top audio button in foreign-to-de, or after reveal in de-to-foreign */}
+              {(!isDeToForeign || isRevealed) && (
+                <button
+                  onClick={() => playAudio(currentCard.foreignWord)}
+                  className="p-1.5 rounded-lg border border-border bg-bg-canvas hover:bg-bg-hover text-indigo-600 dark:text-indigo-400 transition-colors cursor-pointer"
+                  title="Aussprache anhören"
+                >
+                  <Volume2 size={15} />
+                </button>
+              )}
             </div>
           </div>
 
-          {/* Card Body: Question (Always Foreign Word) */}
+          {/* Card Body: Question Prompt */}
           <div className="p-6 sm:p-8 text-center space-y-4">
             <div>
               <span className="text-[11px] font-semibold text-text-disabled uppercase tracking-widest block mb-2">
-                Fremdwort
+                {promptSubLabel}
               </span>
               <h2 className="text-3xl sm:text-4xl font-extrabold text-text-primary tracking-tight">
-                {currentCard.foreignWord}
+                {promptHeading}
               </h2>
 
-              {currentCard.phonetic && (
+              {!isDeToForeign && currentCard.phonetic && (
                 <p className="text-xs text-text-disabled font-mono mt-1">[{currentCard.phonetic}]</p>
+              )}
+
+              {isDeToForeign && currentCard.notes && (
+                <span className="inline-block mt-2 text-xs px-2.5 py-0.5 rounded bg-bg-secondary text-text-secondary border border-border">
+                  {currentCard.notes}
+                </span>
               )}
             </div>
 
-            {currentCard.exampleSentence && (
+            {/* Example sentence if in foreign-to-de or after reveal in de-to-foreign */}
+            {currentCard.exampleSentence && (!isDeToForeign || isRevealed) && (
               <div className="p-3 rounded-xl bg-bg-secondary border border-border text-xs text-text-secondary max-w-md mx-auto">
                 <span className="italic font-serif text-text-primary block">
                   „{currentCard.exampleSentence}“
                 </span>
-                {isRevealed && currentCard.exampleTranslation && (
+                {currentCard.exampleTranslation && (
                   <span className="text-text-disabled block mt-1">
                     ({currentCard.exampleTranslation})
                   </span>
@@ -549,7 +599,7 @@ export const VocabLearnSession: React.FC = () => {
               <div className="pt-4">
                 {!isRevealed ? (
                   <button
-                    onClick={() => setIsRevealed(true)}
+                    onClick={handleRevealFlip}
                     className="w-full py-4 px-6 rounded-xl border-2 border-dashed border-border hover:border-indigo-400 hover:bg-indigo-50/20 text-text-secondary hover:text-text-primary transition-all text-xs font-medium cursor-pointer"
                   >
                     Klicken oder <kbd className="px-1.5 py-0.5 rounded bg-bg-secondary border border-border font-mono text-[10px]">Leertaste</kbd> drücken zum Aufdecken
@@ -558,10 +608,24 @@ export const VocabLearnSession: React.FC = () => {
                   <div className="space-y-4 animate-in fade-in duration-200">
                     <div className="p-4 rounded-xl bg-indigo-50/40 border border-indigo-200 dark:bg-indigo-950/20 dark:border-indigo-900">
                       <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block mb-1">
-                        Deutsche Übersetzung
+                        {targetLabel}
                       </span>
-                      <p className="text-2xl font-bold text-text-primary">{currentCard.germanWord}</p>
-                      {currentCard.notes && (
+                      <div className="flex items-center justify-center gap-2">
+                        <p className="text-2xl font-bold text-text-primary">{targetExpected}</p>
+                        {isDeToForeign && (
+                          <button
+                            onClick={() => playAudio(currentCard.foreignWord)}
+                            className="p-1 rounded text-indigo-600 hover:bg-indigo-100/50 transition-colors cursor-pointer"
+                            title="Aussprache anhören"
+                          >
+                            <Volume2 size={16} />
+                          </button>
+                        )}
+                      </div>
+                      {isDeToForeign && currentCard.phonetic && (
+                        <p className="text-xs text-text-disabled font-mono mt-1">[{currentCard.phonetic}]</p>
+                      )}
+                      {!isDeToForeign && currentCard.notes && (
                         <p className="text-xs text-text-secondary mt-1.5">{currentCard.notes}</p>
                       )}
                     </div>
@@ -594,7 +658,7 @@ export const VocabLearnSession: React.FC = () => {
                 {!answerResult ? (
                   <div>
                     <label className="block text-xs font-medium text-text-secondary mb-1.5 text-center">
-                      Deutsche Übersetzung eintippen:
+                      {isDeToForeign ? `Fremdwort (${langName}) eingeben:` : 'Deutsche Übersetzung eingeben:'}
                     </label>
                     <div className="flex gap-2">
                       <input
@@ -602,7 +666,7 @@ export const VocabLearnSession: React.FC = () => {
                         type="text"
                         value={userInput}
                         onChange={(e) => setUserInput(e.target.value)}
-                        placeholder="Übersetzung eingeben..."
+                        placeholder={`${targetLabel} eingeben...`}
                         className="flex-1 px-4 py-2.5 text-sm rounded-xl border border-border bg-bg-canvas text-text-primary placeholder:text-text-disabled focus:outline-none focus:border-indigo-500 shadow-xs"
                         autoComplete="off"
                         autoCorrect="off"
@@ -624,43 +688,79 @@ export const VocabLearnSession: React.FC = () => {
                     {/* Status Feedback Banner */}
                     {answerResult.status === 'exact' && (
                       <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/40 dark:border-emerald-900 dark:text-emerald-200 space-y-1">
-                        <div className="flex items-center gap-2 font-bold text-sm">
-                          <Check size={16} className="text-emerald-600" />
-                          <span>Perfekt richtig!</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-sm">
+                            <Check size={16} className="text-emerald-600" />
+                            <span>Perfekt richtig!</span>
+                          </div>
+                          {isDeToForeign && (
+                            <button
+                              onClick={() => playAudio(currentCard.foreignWord)}
+                              className="p-1 rounded text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer"
+                              title="Aussprache anhören"
+                            >
+                              <Volume2 size={16} />
+                            </button>
+                          )}
                         </div>
                         <div className="text-xs">
-                          Lösung: <strong>{currentCard.germanWord}</strong>
+                          Lösung: <strong>{targetExpected}</strong>
                         </div>
                       </div>
                     )}
 
                     {answerResult.status === 'close' && (
                       <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 dark:bg-amber-950/40 dark:border-amber-900 dark:text-amber-200 space-y-1.5">
-                        <div className="flex items-center gap-2 font-bold text-sm">
-                          <Sparkles size={16} className="text-amber-600" />
-                          <span>Fast richtig (kleiner Tippfehler)!</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-sm">
+                            <Sparkles size={16} className="text-amber-600" />
+                            <span>Fast richtig (kleiner Tippfehler)!</span>
+                          </div>
+                          {isDeToForeign && (
+                            <button
+                              onClick={() => playAudio(currentCard.foreignWord)}
+                              className="p-1 rounded text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer"
+                              title="Aussprache anhören"
+                            >
+                              <Volume2 size={16} />
+                            </button>
+                          )}
                         </div>
                         <div className="text-xs">
                           Deine Eingabe: <span className="line-through">{userInput}</span>
                         </div>
                         <div className="text-xs">
-                          Richtige Schreibweise: <strong>{currentCard.germanWord}</strong>
+                          Richtige Schreibweise: <strong>{targetExpected}</strong>
                         </div>
                       </div>
                     )}
 
                     {answerResult.status === 'incorrect' && (
                       <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200 space-y-1.5">
-                        <div className="flex items-center gap-2 font-bold text-sm">
-                          <X size={16} className="text-red-600" />
-                          <span>Leider nicht richtig</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 font-bold text-sm">
+                            <X size={16} className="text-red-600" />
+                            <span>Leider nicht richtig</span>
+                          </div>
+                          {isDeToForeign && (
+                            <button
+                              onClick={() => playAudio(currentCard.foreignWord)}
+                              className="p-1 rounded text-red-700 hover:bg-red-100 transition-colors cursor-pointer"
+                              title="Aussprache anhören"
+                            >
+                              <Volume2 size={16} />
+                            </button>
+                          )}
                         </div>
                         <div className="text-xs">
                           Deine Eingabe: <span className="line-through">{userInput || '(leer)'}</span>
                         </div>
                         <div className="text-xs font-semibold">
-                          Richtige Lösung: <strong className="text-text-primary">{currentCard.germanWord}</strong>
+                          Richtige Lösung: <strong className="text-text-primary">{targetExpected}</strong>
                         </div>
+                        {isDeToForeign && currentCard.phonetic && (
+                          <div className="text-[11px] text-text-disabled font-mono">[{currentCard.phonetic}]</div>
+                        )}
                         {currentCard.notes && (
                           <div className="text-[11px] text-text-secondary mt-1">{currentCard.notes}</div>
                         )}
@@ -669,7 +769,16 @@ export const VocabLearnSession: React.FC = () => {
 
                     {/* Action buttons following type check */}
                     <div className="flex items-center justify-between gap-3 pt-1">
-                      {answerResult.status === 'close' ? (
+                      {answerResult.status === 'exact' ? (
+                        <Button
+                          variant="primary"
+                          onClick={() => advanceToNext(true)}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl gap-2"
+                        >
+                          <span>Weiter (Enter)</span>
+                          <ArrowRight size={14} />
+                        </Button>
+                      ) : answerResult.status === 'close' ? (
                         <>
                           <Button
                             variant="secondary"
@@ -681,20 +790,32 @@ export const VocabLearnSession: React.FC = () => {
                           <Button
                             variant="primary"
                             onClick={() => advanceToNext(true)}
-                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium gap-1.5"
                           >
-                            Trotzdem als richtig werten [2]
+                            <Check size={14} />
+                            <span>Trotzdem gelten lassen [2]</span>
                           </Button>
                         </>
                       ) : (
-                        <Button
-                          variant="primary"
-                          onClick={() => advanceToNext(answerResult.status === 'exact')}
-                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 rounded-xl gap-2"
-                        >
-                          <span>Weiter (Enter)</span>
-                          <ArrowRight size={14} />
-                        </Button>
+                        /* status === 'incorrect': User can accept as wrong OR override as right! */
+                        <>
+                          <Button
+                            variant="secondary"
+                            onClick={() => advanceToNext(false)}
+                            className="flex-1 text-text-secondary hover:text-red-600 hover:bg-red-50 py-2.5 text-xs"
+                          >
+                            Weiter (Falsch gewertet) [1]
+                          </Button>
+                          <Button
+                            variant="primary"
+                            onClick={() => advanceToNext(true)}
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold py-2.5 text-xs gap-1.5 shadow-xs"
+                            title="Antwort manuell als richtig akzeptieren (z. B. bei Synonym oder Tippfehler)"
+                          >
+                            <Check size={14} strokeWidth={2.5} />
+                            <span>Trotzdem gelten lassen [2]</span>
+                          </Button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -705,7 +826,7 @@ export const VocabLearnSession: React.FC = () => {
         </div>
 
         {/* Footer shortcuts hint */}
-        <div className="mt-4 text-center text-[11px] text-text-disabled flex items-center justify-center gap-4">
+        <div className="mt-4 text-center text-[11px] text-text-disabled flex items-center justify-center gap-4 flex-wrap">
           <span>
             <kbd className="px-1.5 py-0.5 rounded bg-bg-secondary border border-border font-mono">↵ Enter</kbd>{' '}
             Prüfen / Weiter
@@ -720,7 +841,7 @@ export const VocabLearnSession: React.FC = () => {
             <kbd className="px-1.5 py-0.5 rounded bg-bg-secondary border border-border font-mono">1</kbd> Falsch
           </span>
           <span>
-            <kbd className="px-1.5 py-0.5 rounded bg-bg-secondary border border-border font-mono">2</kbd> Richtig
+            <kbd className="px-1.5 py-0.5 rounded bg-bg-secondary border border-border font-mono">2</kbd> Richtig / Trotzdem gelten lassen
           </span>
         </div>
       </div>

@@ -143,10 +143,10 @@ export function normalizeAnswer(text: string): string {
 }
 
 /**
- * Strips common German articles (der, die, das, ein, eine, etc.) from the beginning.
+ * Strips common German & English articles/prepositions (der, die, das, ein, the, a, an, to) from the beginning.
  */
 function stripArticle(text: string): string {
-  return text.replace(/^(der|die|das|ein|eine|einen|einem|einer)\s+/i, '').trim();
+  return text.replace(/^(der|die|das|ein|eine|einen|einem|einer|the|a|an|to)\s+/i, '').trim();
 }
 
 export type AnswerCheckResult =
