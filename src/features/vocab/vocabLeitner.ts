@@ -87,9 +87,10 @@ export function calculateNextReview(
   baseDate = new Date()
 ): { nextBox: number; nextReview: string; intervalDays: number } {
   if (!isCorrect) {
-    // Falls falsch beantwortet: fällt zurück in Box 1 und ist sofort wieder fällig
+    // Falls falsch beantwortet: fällt genau 1 Stufe zurück (mindestens Box 1) und ist sofort wieder fällig
+    const nextBox = Math.max(1, currentBox - 1);
     return {
-      nextBox: 1,
+      nextBox,
       nextReview: baseDate.toISOString(),
       intervalDays: 0,
     };

@@ -74,9 +74,13 @@ export const VocabLearnSession: React.FC = () => {
   }, [deckId, deckItems, allItems, filterParam, boxParam]);
 
   // Session state
+  const [allPoolCards, setAllPoolCards] = useState<VocabItem[]>(queueCards);
   const [sessionCards, setSessionCards] = useState<VocabItem[]>(queueCards);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isRevealed, setIsRevealed] = useState(false);
+  const [round, setRound] = useState(1);
+  const [failedCardIdsInRound, setFailedCardIdsInRound] = useState<string[]>([]);
+  const [roundNotification, setRoundNotification] = useState<string | null>(null);
 
   // Type mode state
   const [userInput, setUserInput] = useState('');
@@ -87,18 +91,36 @@ export const VocabLearnSession: React.FC = () => {
 
   // Session statistics
   const [stats, setStats] = useState({
+    initialCount: queueCards.length,
+    roundsCount: 1,
+    firstRoundCorrect: 0,
+    totalAnswered: 0,
     correct: 0,
     incorrect: 0,
     promotedToBox: [] as { foreign: string; fromBox: number; toBox: number }[],
-    demotedToBox1: [] as { foreign: string; fromBox: number }[],
+    demotedBoxes: [] as { foreign: string; fromBox: number; toBox: number }[],
   });
 
   const [isFinished, setIsFinished] = useState(false);
 
   // Sync cards when queue changes initially
   useEffect(() => {
+    setAllPoolCards(queueCards);
     setSessionCards(queueCards);
     setCurrentIndex(0);
+    setRound(1);
+    setFailedCardIdsInRound([]);
+    setRoundNotification(null);
+    setStats({
+      initialCount: queueCards.length,
+      roundsCount: 1,
+      firstRoundCorrect: 0,
+      totalAnswered: 0,
+      correct: 0,
+      incorrect: 0,
+      promotedToBox: [],
+      demotedBoxes: [],
+    });
     setIsFinished(false);
   }, [queueCards]);
 
@@ -180,30 +202,75 @@ export const VocabLearnSession: React.FC = () => {
       if (!currentCard) return;
 
       const fromBox = currentCard.box;
-      const toBox = isCorrect ? Math.min(5, fromBox + 1) : 1;
+      // Fällt genau 1 Stufe zurück (mindestens Box 1)
+      const toBox = isCorrect ? Math.min(5, fromBox + 1) : Math.max(1, fromBox - 1);
 
       // Update store
       recordVocabResult(currentCard.id, isCorrect);
 
+      // Track errors for current round
+      let currentRoundErrors = failedCardIdsInRound;
+      if (!isCorrect) {
+        if (!failedCardIdsInRound.includes(currentCard.id)) {
+          currentRoundErrors = [...failedCardIdsInRound, currentCard.id];
+          setFailedCardIdsInRound(currentRoundErrors);
+        }
+      }
+
       // Update stats
       setStats((prev) => ({
+        ...prev,
+        initialCount: prev.initialCount || allPoolCards.length,
+        roundsCount: Math.max(prev.roundsCount, round),
+        firstRoundCorrect:
+          round === 1 && isCorrect ? prev.firstRoundCorrect + 1 : prev.firstRoundCorrect,
+        totalAnswered: prev.totalAnswered + 1,
         correct: prev.correct + (isCorrect ? 1 : 0),
         incorrect: prev.incorrect + (isCorrect ? 0 : 1),
         promotedToBox: isCorrect
           ? [...prev.promotedToBox, { foreign: currentCard.foreignWord, fromBox, toBox }]
           : prev.promotedToBox,
-        demotedToBox1: !isCorrect
-          ? [...prev.demotedToBox1, { foreign: currentCard.foreignWord, fromBox }]
-          : prev.demotedToBox1,
+        demotedBoxes: !isCorrect
+          ? [...prev.demotedBoxes, { foreign: currentCard.foreignWord, fromBox, toBox }]
+          : prev.demotedBoxes,
       }));
 
+      // Check if we reached the end of current round
       if (currentIndex + 1 >= sessionCards.length) {
-        setIsFinished(true);
+        if (currentRoundErrors.length > 0) {
+          // Next round with ONLY cards that were incorrect!
+          // Already correct cards are NOT repeated ("nicht die richtigen doppelt")
+          const nextCards = allPoolCards
+            .filter((c) => currentRoundErrors.includes(c.id))
+            .sort(() => Math.random() - 0.5);
+
+          const nextRoundNum = round + 1;
+          setSessionCards(nextCards);
+          setCurrentIndex(0);
+          setRound(nextRoundNum);
+          setFailedCardIdsInRound([]);
+          setRoundNotification(
+            `Runde ${nextRoundNum}: Wiederhole jetzt nur die ${nextCards.length} ${
+              nextCards.length === 1 ? 'Vokabel' : 'Vokabeln'
+            }, die falsch waren. Richtige Vokabeln werden nicht wiederholt.`
+          );
+        } else {
+          // All cards finished!
+          setIsFinished(true);
+        }
       } else {
         setCurrentIndex((i) => i + 1);
       }
     },
-    [currentCard, currentIndex, sessionCards.length, recordVocabResult]
+    [
+      currentCard,
+      currentIndex,
+      sessionCards.length,
+      failedCardIdsInRound,
+      round,
+      allPoolCards,
+      recordVocabResult,
+    ]
   );
 
   // Type Mode Check
@@ -304,23 +371,31 @@ export const VocabLearnSession: React.FC = () => {
     stopSpeech();
     let nextQueue: VocabItem[] = [];
 
-    if (onlyWrong && stats.demotedToBox1.length > 0) {
-      const wrongWords = new Set(stats.demotedToBox1.map((w) => w.foreign));
-      nextQueue = sessionCards.filter((c) => wrongWords.has(c.foreignWord));
+    if (onlyWrong && stats.demotedBoxes.length > 0) {
+      const wrongWords = new Set(stats.demotedBoxes.map((w) => w.foreign));
+      nextQueue = allPoolCards.filter((c) => wrongWords.has(c.foreignWord));
     } else {
-      nextQueue = [...sessionCards].sort(() => Math.random() - 0.5);
+      nextQueue = [...allPoolCards].sort(() => Math.random() - 0.5);
     }
 
     setSessionCards(nextQueue);
     setCurrentIndex(0);
+    setRound(1);
+    setFailedCardIdsInRound([]);
+    setRoundNotification(null);
     setIsRevealed(false);
     setUserInput('');
+    setRetryInput('');
     setAnswerResult(null);
     setStats({
+      initialCount: nextQueue.length,
+      roundsCount: 1,
+      firstRoundCorrect: 0,
+      totalAnswered: 0,
       correct: 0,
       incorrect: 0,
       promotedToBox: [],
-      demotedToBox1: [],
+      demotedBoxes: [],
     });
     setIsFinished(false);
   };
@@ -363,8 +438,6 @@ export const VocabLearnSession: React.FC = () => {
 
   // End of Session Summary
   if (isFinished) {
-    const totalAnswered = stats.correct + stats.incorrect;
-    const accuracy = totalAnswered > 0 ? Math.round((stats.correct / totalAnswered) * 100) : 0;
 
     return (
       <div className="flex-1 flex flex-col items-center justify-center p-6 max-w-xl mx-auto w-full">
@@ -386,21 +459,30 @@ export const VocabLearnSession: React.FC = () => {
           <div className="grid grid-cols-3 gap-3 p-3.5 bg-bg-secondary rounded-xl border border-border">
             <div>
               <span className="block text-[11px] font-semibold text-text-secondary uppercase">
-                Gelernt
+                Vokabeln
               </span>
-              <span className="text-xl font-bold text-text-primary">{totalAnswered}</span>
+              <span className="text-xl font-bold text-text-primary">
+                {stats.initialCount || allPoolCards.length}
+              </span>
+            </div>
+            <div>
+              <span className="block text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 uppercase">
+                Runden
+              </span>
+              <span className="text-xl font-bold text-indigo-600 dark:text-indigo-400">
+                {stats.roundsCount}
+              </span>
             </div>
             <div>
               <span className="block text-[11px] font-semibold text-emerald-600 uppercase">
-                Richtig
+                1. Durchgang
               </span>
-              <span className="text-xl font-bold text-emerald-600">{stats.correct}</span>
-            </div>
-            <div>
-              <span className="block text-[11px] font-semibold text-text-secondary uppercase">
-                Genauigkeit
+              <span className="text-xl font-bold text-emerald-600">
+                {stats.initialCount > 0
+                  ? Math.round((stats.firstRoundCorrect / stats.initialCount) * 100)
+                  : 100}
+                %
               </span>
-              <span className="text-xl font-bold text-text-primary">{accuracy}%</span>
             </div>
           </div>
 
@@ -409,43 +491,47 @@ export const VocabLearnSession: React.FC = () => {
             {stats.promotedToBox.length > 0 && (
               <div className="text-emerald-700 dark:text-emerald-400">
                 <span className="font-semibold">
-                  ↑ {stats.promotedToBox.length} Vokabeln aufgestiegen:
+                  ↑ {stats.promotedToBox.length}x aufgestiegen:
                 </span>{' '}
-                {stats.promotedToBox.map((p) => p.foreign).join(', ')}
+                {stats.promotedToBox
+                  .map((p) => `${p.foreign} (Box ${p.fromBox} → ${p.toBox})`)
+                  .join(', ')}
               </div>
             )}
-            {stats.demotedToBox1.length > 0 && (
-              <div className="text-red-600 dark:text-red-400">
+            {stats.demotedBoxes.length > 0 && (
+              <div className="text-amber-700 dark:text-amber-400">
                 <span className="font-semibold">
-                  ↓ {stats.demotedToBox1.length} Vokabeln zurück auf Box 1 (zur Wiederholung):
+                  ↓ {stats.demotedBoxes.length}x eine Stufe zurückgefallen:
                 </span>{' '}
-                {stats.demotedToBox1.map((p) => p.foreign).join(', ')}
+                {stats.demotedBoxes
+                  .map((p) => `${p.foreign} (Box ${p.fromBox} → ${p.toBox})`)
+                  .join(', ')}
               </div>
             )}
-            {stats.demotedToBox1.length === 0 && (
+            {stats.demotedBoxes.length === 0 && (
               <div className="text-emerald-600 font-medium">Perfekt! Keine Fehler gemacht.</div>
             )}
           </div>
 
           {/* Next action buttons */}
           <div className="flex flex-col sm:flex-row items-center gap-2 pt-2">
-            {stats.demotedToBox1.length > 0 && (
+            {stats.demotedBoxes.length > 0 && (
               <Button
                 variant="primary"
                 onClick={() => handleRestartSession(true)}
                 className="w-full gap-2 bg-indigo-600 text-white"
               >
                 <RotateCcw size={14} />
-                <span>Fehler wiederholen ({stats.demotedToBox1.length})</span>
+                <span>Fehler wiederholen ({stats.demotedBoxes.length})</span>
               </Button>
             )}
 
             <Button
-              variant={stats.demotedToBox1.length > 0 ? 'secondary' : 'primary'}
+              variant={stats.demotedBoxes.length > 0 ? 'secondary' : 'primary'}
               onClick={() => handleRestartSession(false)}
               className={cn(
                 'w-full gap-2',
-                stats.demotedToBox1.length === 0 && 'bg-indigo-600 text-white'
+                stats.demotedBoxes.length === 0 && 'bg-indigo-600 text-white'
               )}
             >
               <RotateCcw size={14} />
@@ -494,8 +580,15 @@ export const VocabLearnSession: React.FC = () => {
               <span className="text-[11px] font-semibold text-text-disabled uppercase tracking-wider block">
                 {deck ? deck.title : 'Alle Themenpakete'}
               </span>
-              <span className="text-xs font-bold text-text-primary">
-                Karte {currentIndex + 1} von {sessionCards.length}
+              <span className="text-xs font-bold text-text-primary flex items-center gap-1.5">
+                {round > 1 && (
+                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300 font-semibold text-[10px]">
+                    Runde {round} (Wiederholung)
+                  </span>
+                )}
+                <span>
+                  Karte {currentIndex + 1} von {sessionCards.length}
+                </span>
               </span>
             </div>
           </div>
@@ -573,6 +666,25 @@ export const VocabLearnSession: React.FC = () => {
             />
           </div>
         </div>
+
+        {/* Round notification banner */}
+        {roundNotification && (
+          <div className="max-w-3xl mx-auto w-full mt-2.5">
+            <div className="flex items-center justify-between p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 text-indigo-900 dark:bg-indigo-950/50 dark:border-indigo-900 dark:text-indigo-200 text-xs shadow-2xs">
+              <div className="flex items-center gap-2">
+                <RotateCcw size={14} className="text-indigo-600 dark:text-indigo-400 shrink-0" />
+                <span className="font-medium">{roundNotification}</span>
+              </div>
+              <button
+                onClick={() => setRoundNotification(null)}
+                className="text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 p-0.5 rounded cursor-pointer"
+                title="Hinweis schließen"
+              >
+                <X size={13} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Main Study Arena */}
