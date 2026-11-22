@@ -13,6 +13,7 @@ import {
   ArrowRight,
   Eye,
   ArrowLeftRight,
+  PenTool,
 } from 'lucide-react';
 import { useStore, useVocabDeck, useVocabItemsByDeck, useAllVocabItems } from '../../store';
 import { Button } from '../../components/Button';
@@ -81,6 +82,8 @@ export const VocabLearnSession: React.FC = () => {
   const [userInput, setUserInput] = useState('');
   const [answerResult, setAnswerResult] = useState<AnswerCheckResult | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [retryInput, setRetryInput] = useState('');
+  const retryInputRef = useRef<HTMLInputElement>(null);
 
   // Session statistics
   const [stats, setStats] = useState({
@@ -125,6 +128,7 @@ export const VocabLearnSession: React.FC = () => {
   useEffect(() => {
     setIsRevealed(false);
     setUserInput('');
+    setRetryInput('');
     setAnswerResult(null);
 
     // Prefetch audio for current and upcoming card
@@ -152,6 +156,23 @@ export const VocabLearnSession: React.FC = () => {
       setTimeout(() => inputRef.current?.focus(), 80);
     }
   }, [currentIndex, mode, answerResult]);
+
+  // Auto-focus retry input when an answer is evaluated as incorrect
+  useEffect(() => {
+    if (mode === 'type' && answerResult?.status === 'incorrect') {
+      const timer = setTimeout(() => retryInputRef.current?.focus(), 80);
+      return () => clearTimeout(timer);
+    }
+  }, [mode, answerResult]);
+
+  // Check if the user has re-typed the solution correctly in correction mode
+  const isRetryCorrect = useMemo(() => {
+    if (!currentCard || !retryInput.trim()) return false;
+    const targetAnswer =
+      direction === 'de-to-foreign' ? currentCard.foreignWord : currentCard.germanWord;
+    const result = checkTranslationAnswer(retryInput, targetAnswer);
+    return result.status === 'exact' || result.status === 'close';
+  }, [currentCard, retryInput, direction]);
 
   // Handle Answer Evaluation
   const advanceToNext = useCallback(
@@ -223,20 +244,38 @@ export const VocabLearnSession: React.FC = () => {
           }
         } else {
           // Answer has been checked
-          if (e.key === 'Enter') {
-            e.preventDefault();
-            if (answerResult.status === 'exact' || answerResult.status === 'close') {
+          if (answerResult.status === 'exact' || answerResult.status === 'close') {
+            if (e.key === 'Enter') {
+              e.preventDefault();
               advanceToNext(true);
-            } else {
+            } else if (e.key === '1' && answerResult.status === 'close') {
+              e.preventDefault();
               advanceToNext(false);
+            } else if (e.key === '2') {
+              e.preventDefault();
+              advanceToNext(true);
             }
-          } else if (e.key === '1') {
-            e.preventDefault();
-            advanceToNext(false);
-          } else if (e.key === '2') {
-            // [2] Key accepts the answer as correct, even if system marked it incorrect!
-            e.preventDefault();
-            advanceToNext(true);
+          } else {
+            // answerResult.status === 'incorrect': User must re-type correctly before advancing!
+            const isTargetRetryInput = e.target === retryInputRef.current;
+
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              if (isRetryCorrect) {
+                advanceToNext(false);
+              } else {
+                retryInputRef.current?.focus();
+              }
+            } else if (e.key === '1' && !isTargetRetryInput) {
+              if (isRetryCorrect) {
+                e.preventDefault();
+                advanceToNext(false);
+              }
+            } else if (e.key === '2' && (!isTargetRetryInput || !retryInput.trim())) {
+              // Override: manual accept as correct
+              e.preventDefault();
+              advanceToNext(true);
+            }
           }
         }
       } else {
@@ -258,7 +297,7 @@ export const VocabLearnSession: React.FC = () => {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [mode, isRevealed, answerResult, isFinished, handleCheckAnswer, advanceToNext]);
+  }, [mode, isRevealed, answerResult, isFinished, isRetryCorrect, retryInput, handleCheckAnswer, advanceToNext]);
 
   // Restart session
   const handleRestartSession = (onlyWrong = false) => {
@@ -745,7 +784,7 @@ export const VocabLearnSession: React.FC = () => {
                     )}
 
                     {answerResult.status === 'incorrect' && (
-                      <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200 space-y-1.5">
+                      <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 dark:bg-red-950/40 dark:border-red-900 dark:text-red-200 space-y-3">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 font-bold text-sm">
                             <X size={16} className="text-red-600" />
@@ -765,7 +804,7 @@ export const VocabLearnSession: React.FC = () => {
                           Deine Eingabe: <span className="line-through">{userInput || '(leer)'}</span>
                         </div>
                         <div className="text-xs font-semibold">
-                          Richtige Lösung: <strong className="text-text-primary">{targetExpected}</strong>
+                          Richtige Lösung: <strong className="text-text-primary text-sm">{targetExpected}</strong>
                         </div>
                         {isDeToForeign && currentCard.phonetic && (
                           <div className="text-[11px] text-text-disabled font-mono">[{currentCard.phonetic}]</div>
@@ -773,6 +812,47 @@ export const VocabLearnSession: React.FC = () => {
                         {currentCard.notes && (
                           <div className="text-[11px] text-text-secondary mt-1">{currentCard.notes}</div>
                         )}
+
+                        {/* Pflicht-Korrektur: Die Vokabel muss einmal richtig abgetippt werden */}
+                        <div className="pt-2 border-t border-red-200 dark:border-red-900/60 space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="text-xs font-semibold text-text-primary flex items-center gap-1.5">
+                              <PenTool size={13} className="text-indigo-600 dark:text-indigo-400" />
+                              <span>Zum Einprägen bitte einmal richtig abtippen:</span>
+                            </label>
+                            {isRetryCorrect ? (
+                              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100/70 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
+                                <Check size={12} strokeWidth={2.5} />
+                                <span>Richtig!</span>
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-text-disabled font-medium">Pflichtfeld</span>
+                            )}
+                          </div>
+                          <div className="flex gap-2">
+                            <input
+                              ref={retryInputRef}
+                              type="text"
+                              value={retryInput}
+                              onChange={(e) => setRetryInput(e.target.value)}
+                              placeholder={`"${targetExpected}" abtippen...`}
+                              className={cn(
+                                'flex-1 px-3 py-2 text-sm rounded-lg border bg-bg-canvas text-text-primary transition-all focus:outline-none shadow-2xs',
+                                isRetryCorrect
+                                  ? 'border-emerald-500 bg-emerald-50/30 text-emerald-950 dark:text-emerald-100 dark:border-emerald-600'
+                                  : 'border-red-300 dark:border-red-800 focus:border-indigo-500'
+                              )}
+                              autoComplete="off"
+                              autoCorrect="off"
+                              spellCheck="false"
+                            />
+                          </div>
+                          {!isRetryCorrect && retryInput.trim() && (
+                            <p className="text-[11px] text-red-600 dark:text-red-400">
+                              Stimmt noch nicht ganz. Bitte genau so abtippen: <strong>{targetExpected}</strong>
+                            </p>
+                          )}
+                        </div>
                       </div>
                     )}
 
@@ -806,14 +886,30 @@ export const VocabLearnSession: React.FC = () => {
                           </Button>
                         </>
                       ) : (
-                        /* status === 'incorrect': User can accept as wrong OR override as right! */
+                        /* status === 'incorrect': User MUST retype it correctly before advancing as wrong! */
                         <>
                           <Button
                             variant="secondary"
-                            onClick={() => advanceToNext(false)}
-                            className="flex-1 text-text-secondary hover:text-red-600 hover:bg-red-50 py-2.5 text-xs"
+                            disabled={!isRetryCorrect}
+                            onClick={() => {
+                              if (isRetryCorrect) advanceToNext(false);
+                            }}
+                            className={cn(
+                              'flex-1 py-2.5 text-xs font-semibold gap-1.5 transition-all',
+                              isRetryCorrect
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs cursor-pointer'
+                                : 'opacity-40 cursor-not-allowed bg-bg-secondary text-text-disabled border-border'
+                            )}
+                            title={
+                              isRetryCorrect
+                                ? 'Mit nächster Vokabel fortfahren (als falsch gewertet)'
+                                : 'Bitte tippe zuerst die richtige Lösung oben ab'
+                            }
                           >
-                            Weiter (Falsch gewertet) [1]
+                            <span>
+                              {isRetryCorrect ? 'Weiter (Falsch gewertet) [Enter]' : 'Erst richtig abtippen ✍️'}
+                            </span>
+                            {isRetryCorrect && <ArrowRight size={13} />}
                           </Button>
                           <Button
                             variant="primary"
